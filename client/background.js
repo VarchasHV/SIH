@@ -11,6 +11,7 @@
 // can gate each server call / the final submit.
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
+import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isSensitiveCategory } from "./lib/sensitive-fields.js";
 
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
@@ -19,21 +20,6 @@ const DEFAULTS = {
   confirmEachSend: false,
   confirmBeforeSubmit: true,
 };
-
-const CENSORED_CATEGORIES = new Set([
-  "aadhaar", "Aadhaar",
-  "pan", "PAN",
-  "ssn", "SSN",
-  "credit-card", "credit/debit card number", "credit_card",
-  "cvv", "CVV/security code",
-  "card expiry",
-  "bank account information",
-  "passport number",
-  "government ID",
-  "password",
-  "ifsc",
-  "upi-vpa",
-]);
 
 // ---- legacy "scan" path (unchanged behaviour for the old popup button) ----
 async function scanActiveTab() {
@@ -148,14 +134,12 @@ async function runAgentTask(opts) {
 
     // 4. SANITIZE SKELETON: COMPLETELY STRIP ALL REDACTED / CENSORED NODES
     // The server/LLM must NEVER see redacted fields in the skeleton!
-    const SENSITIVE_RE = /password|passcode|passwd|aadhaar|aadhar|uidai|pan|ssn|social_?security|credit_?card|debit_?card|card_?num|cvv|cvc|card_?expir|bank|account_?no|routing|ifsc|upi|passport|govt_?id|national_?id|voter_?id|epic|driver|license/i;
-
     const unredactedNodes = prep.skeleton.nodes.filter((node) => {
       if (node.isCensored) return false;
-      if (node.piiCategory && (CENSORED_CATEGORIES.has(node.piiCategory) || SENSITIVE_RE.test(node.piiCategory))) return false;
+      if (isSensitiveCategory(node.piiCategory)) return false;
       if (node.type === "password") return false;
       const combined = [node.label || "", node.name || "", node.id || "", node.piiCategory || ""].join(" ");
-      if (SENSITIVE_RE.test(combined)) return false;
+      if (SENSITIVE_PATTERNS.test(combined)) return false;
       return true;
     });
 
@@ -218,7 +202,7 @@ async function runAgentTask(opts) {
       }
       const targetNode = unredactedNodes.find((n) => n.id === act.targetId);
       // Double check node is not censored
-      if (targetNode?.isCensored || (targetNode?.piiCategory && CENSORED_CATEGORIES.has(targetNode.piiCategory))) {
+      if (targetNode?.isCensored || isSensitiveCategory(targetNode?.piiCategory)) {
         emit({ type: "error", step, message: `Action blocked on redacted node ${act.targetId}` });
         continue;
       }

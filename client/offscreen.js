@@ -9,6 +9,7 @@ import { detectPII } from "./lib/pii-rules.mjs";
 import { redactCanvas } from "./lib/redact.mjs";
 import { mergeDetections, redundancyStats } from "./lib/merge.mjs";
 import { associateLabels } from "./lib/label-assoc.mjs";
+import { isSensitiveCategory } from "./lib/sensitive-fields.js";
 
 const url = (p) => chrome.runtime.getURL(p);
 
@@ -133,8 +134,12 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
   const fieldCategories = {};
   for (const d of labelDets) fieldCategories[d.fieldId] = d.category;
 
-  // redact: union of every merged region + every raw vision hit
-  const regions = merged.map((m) => ({ ...m.bbox, category: m.category }));
+  // redact: union of every merged region whose category the shared module
+  // flags as sensitive. This ensures the screenshot blackout list is
+  // decided identically to skeleton filtering and the executor guard.
+  const regions = merged
+    .filter((m) => isSensitiveCategory(m.category) || m.category === "face")
+    .map((m) => ({ ...m.bbox, category: m.category }));
   const tRedact = performance.now();
   const applied = redactCanvas(canvas, regions, { mode });
   timings.redactMs = Math.round(performance.now() - tRedact);

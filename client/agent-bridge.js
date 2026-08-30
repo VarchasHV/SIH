@@ -6,20 +6,7 @@
   if (window.__plAgentBridgeLoaded) return; // guard against double injection
   window.__plAgentBridgeLoaded = true;
 
-  const CENSORED_CATEGORIES = new Set([
-    "aadhaar", "Aadhaar",
-    "pan", "PAN",
-    "ssn", "SSN",
-    "credit-card", "credit/debit card number", "credit_card",
-    "cvv", "CVV/security code",
-    "card expiry",
-    "bank account information",
-    "passport number",
-    "government ID",
-    "password",
-    "ifsc",
-    "upi-vpa",
-  ]);
+  const CENSORED_CATEGORIES = window.__PL.CENSORED_CATEGORIES;
 
   async function prepare() {
     const { profile = {} } = await chrome.storage.local.get("profile");

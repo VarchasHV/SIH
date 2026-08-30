@@ -9,23 +9,8 @@
   const INTERACTABLE = "input, textarea, select, button, a[href], [contenteditable], [role=button], [role=textbox], [role=combobox], [role=checkbox], [role=radio], [role=link]";
   let seq = 0;
 
-  const SENSITIVE_PATTERNS = /password|passcode|passwd|aadhaar|aadhar|uidai|pan|pannumber|pancard|ssn|social_?security|credit_?card|debit_?card|card_?num|cvv|cvc|card_?expir|bank|account_?no|routing|ifsc|upi|passport|govt_?id|national_?id|voter_?id|epic|driver|license/i;
-
-  const CENSORED_CATEGORIES = new Set([
-    "aadhaar", "Aadhaar",
-    "pan", "PAN",
-    "ssn", "SSN",
-    "credit-card", "credit/debit card number", "credit_card",
-    "cvv", "CVV/security code",
-    "card expiry",
-    "bank account information",
-    "passport number",
-    "government ID",
-    "password",
-    "ifsc",
-    "upi-vpa",
-    "sensitive",
-  ]);
+  const SENSITIVE_PATTERNS = window.__PL.SENSITIVE_PATTERNS;
+  const CENSORED_CATEGORIES = window.__PL.CENSORED_CATEGORIES;
 
   function stamp(el) {
     let id = el.getAttribute("data-pl-id");

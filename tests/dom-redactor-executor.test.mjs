@@ -5,6 +5,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const sensitiveFieldsCode = fs.readFileSync(path.join(__dirname, "../client/lib/sensitive-fields.js"), "utf8")
+  // Strip the ESM export line — content scripts don't use it, and `new Function` can't parse it
+  .replace(/^export\s*\{[^}]*\}\s*;?/m, "");
 const redactorCode = fs.readFileSync(path.join(__dirname, "../client/dom-redactor.js"), "utf8");
 const executorCode = fs.readFileSync(path.join(__dirname, "../client/executor.js"), "utf8");
 
@@ -139,6 +142,10 @@ function setupContext() {
     HTMLInputElement: MockElement,
     __PL: {},
   };
+
+  // Load the shared sensitive-fields module first (mirrors manifest.json load order)
+  const fnSensitive = new Function("window", sensitiveFieldsCode);
+  fnSensitive(window);
 
   const fnRedactor = new Function("window", "document", "Node", "NodeFilter", "MutationObserver", "chrome", redactorCode);
   fnRedactor(window, document, window.Node, window.NodeFilter, window.MutationObserver, window.chrome);
