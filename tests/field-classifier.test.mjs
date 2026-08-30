@@ -21,11 +21,13 @@ test("obfuscated / truncated name attrs still match (fuzzy pass)", () => {
 
 test("spatial caption classifies when the name is opaque", () => {
   assert.equal(classifySignals(sig({ name: "01___title_x", labelText: "First Name" })).category, "first name");
-  assert.equal(classifySignals(sig({ name: "f_44", labelText: "Card User Name" })).category, "full name");
+  assert.equal(classifySignals(sig({ name: "f_44", labelText: "Card User Name" })).category, "card user name");
+  assert.equal(classifySignals(sig({ name: "05_company", labelText: "Company" })).category, "company");
+  assert.equal(classifySignals(sig({ name: "13adr_city", labelText: "City" })).category, "city");
 });
 
 test("non-PII fields stay unclassified", () => {
-  assert.equal(classifySignals(sig({ name: "05_company", labelText: "Company" })), null);
-  assert.equal(classifySignals(sig({ name: "13adr_city", labelText: "City" })), null);
   assert.equal(classifySignals(sig({ name: "q", labelText: "Search" })), null);
+  assert.equal(classifySignals(sig({ name: "promo_code", labelText: "Promo Code" })), null);
+  assert.equal(classifySignals(sig({ name: "quantity", labelText: "Quantity" })), null);
 });

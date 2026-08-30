@@ -9,7 +9,7 @@ import { detectPII } from "./lib/pii-rules.mjs";
 import { redactCanvas } from "./lib/redact.mjs";
 import { mergeDetections, redundancyStats } from "./lib/merge.mjs";
 import { associateLabels } from "./lib/label-assoc.mjs";
-import { isSensitiveCategory } from "./lib/sensitive-fields.js";
+import { isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 
 const url = (p) => chrome.runtime.getURL(p);
 

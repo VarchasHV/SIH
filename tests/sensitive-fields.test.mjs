@@ -6,36 +6,30 @@ import {
   CENSORED_CATEGORIES,
   isSensitiveCategory,
   isSensitiveText,
-} from "../client/lib/sensitive-fields.js";
+} from "../client/lib/sensitive-fields.mjs";
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Word-boundary regression: labels that MUST NOT match
+// Word-boundary / Non-PII: labels that MUST NOT match
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MUST_NOT_MATCH = [
-  "Company",     // previously matched `pan`
-  "Position",
-  "City",
-  "State",
-  "Country",
-  "Full Name",
-  "Web Site",
-  "Japan",       // previously matched `pan`
-  "Epicurean",   // previously matched `epic`
-  "expand",      // previously matched `pan`
-  "Bankruptcy",  // previously matched `bank`
-  "Panther",     // previously matched `pan`
-  "cupid",       // previously matched `upi`
-  "Duplicator",  // previously matched `upi`
-  "Episcopal",   // previously matched `epic`
-  "Sublicense Agreement",  // previously matched `license` inside "sublicense" — but \blicense\b still matches "Sublicense" because "license" starts at a word boundary inside it
+  "Search",
+  "Quantity",
+  "Promo Code",
+  "Coupon Code",
+  "Filter Results",
+  "Japan",       // contains `pan`
+  "Epicurean",   // contains `epic`
+  "expand",      // contains `pan`
+  "Bankruptcy",  // contains `bank`
+  "Panther",     // contains `pan`
+  "cupid",       // contains `upi`
+  "Duplicator",  // contains `upi`
+  "Episcopal",   // contains `epic`
+  "Sublicense Agreement",
 ];
 
-// NOTE: "Sublicense Agreement" is a tricky edge case. The word "Sublicense"
-// does NOT contain `license` at a \b boundary (it's mid-word), so \blicense\b
-// won't match it. We keep it in the must-not-match list.
-
-test("SENSITIVE_PATTERNS must NOT match ordinary field labels", () => {
+test("SENSITIVE_PATTERNS must NOT match non-PII field labels", () => {
   for (const label of MUST_NOT_MATCH) {
     assert.equal(
       SENSITIVE_PATTERNS.test(label),
@@ -46,36 +40,71 @@ test("SENSITIVE_PATTERNS must NOT match ordinary field labels", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// True positives: labels that MUST match
+// True positives: all PII categories that MUST match
 // ═══════════════════════════════════════════════════════════════════════════
 
 const MUST_MATCH = [
+  // Government & National Identifiers
   "Aadhaar Number",
   "PAN Number",
+  "Voter ID",
+  "Passport Number",
   "SSN",
+  "Driver License Number",
+  "GSTIN",
+
+  // Financial & Payment Data
   "Credit Card Number",
-  "CVV",
+  "Credit Card Type",
+  "Card Verification Code (CVV)",
+  "Card Expiration Date",
+  "Card User Name",
+  "Card Issuing Bank",
+  "Card Customer Service Phone",
   "IFSC Code",
   "UPI ID",
-  "Passport Number",
   "Bank Account Number",
+  "Annual Income",
+
+  // Personal & Demographic Information
+  "First Name",
+  "Middle Initial",
+  "Last Name",
+  "Full Name",
+  "Date of Birth (DOB)",
+  "Age",
+  "Birth Place",
+  "Sex / Gender",
+  "Title",
+
+  // Contact & Location Data
+  "Address Line 1",
+  "Address Line 2",
+  "City",
+  "State / Province",
+  "Country",
+  "Zip / Postal Code",
+  "Home Phone",
+  "Work Telephone",
+  "Cell Phone",
+  "Fax",
+  "Email",
+
+  // Digital, Technical & Employment Identifiers
+  "IPv4 Address",
+  "User ID",
+  "Username",
   "Password",
-  "password",
-  "Enter your PAN",
-  "Enter your SSN",
-  "Enter your CVV",
-  "IFSC",
-  "UPI",
-  "voter_id",
-  "govt_id",
-  "national_id",
-  "epic",
-  "driver",
-  "license",
-  "Driver License Number",
+  "Web Site",
+  "Company",
+  "Position",
+
+  // Miscellaneous
+  "Vehicle Registration",
+  "Custom Messages and Comments",
 ];
 
-test("SENSITIVE_PATTERNS MUST match sensitive field labels", () => {
+test("SENSITIVE_PATTERNS MUST match all comprehensive PII field labels", () => {
   for (const label of MUST_MATCH) {
     assert.equal(
       SENSITIVE_PATTERNS.test(label),
@@ -99,8 +128,8 @@ test("isSensitiveCategory returns true for every CENSORED_CATEGORIES entry", () 
   }
 });
 
-test("isSensitiveCategory returns false for safe categories", () => {
-  const safe = ["first name", "last name", "email", "phone number", "address", "postal/ZIP code", null, undefined, ""];
+test("isSensitiveCategory returns false for safe non-PII categories", () => {
+  const safe = ["search", "promo", "quantity", "filter", null, undefined, ""];
   for (const cat of safe) {
     assert.equal(
       isSensitiveCategory(cat),
@@ -115,28 +144,12 @@ test("isSensitiveCategory returns false for safe categories", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 test("isSensitiveText detects sensitive substrings in combined attribute text", () => {
-  // Simulates: [name, id, placeholder, aria-label, type].join(" ")
   assert.equal(isSensitiveText("aadhaar_number uid-field Enter your Aadhaar text"), true);
   assert.equal(isSensitiveText("pan_input pancard-field Enter PAN text"), true);
-  assert.equal(isSensitiveText("company_name company Enter company name text"), false);
-  assert.equal(isSensitiveText("first_name fname First Name text"), false);
-  assert.equal(isSensitiveText("city_field city City text"), false);
-});
-
-test("isSensitiveText does not false-positive on safe field combinations", () => {
-  const safeFields = [
-    "company comp Company Name text",
-    "position pos Job Position text",
-    "state_field state State / Province text",
-    "country_code country Country text",
-    "website url Web Site text",
-    "full_name fullname Full Name text",
-  ];
-  for (const text of safeFields) {
-    assert.equal(
-      isSensitiveText(text),
-      false,
-      `isSensitiveText("${text}") should be false`
-    );
-  }
+  assert.equal(isSensitiveText("company_name company Enter company name text"), true);
+  assert.equal(isSensitiveText("first_name fname First Name text"), true);
+  assert.equal(isSensitiveText("city_field city City text"), true);
+  assert.equal(isSensitiveText("05_company label Company text"), true);
+  assert.equal(isSensitiveText("search_query q Enter search text"), false);
+  assert.equal(isSensitiveText("promo_code coupon Enter discount text"), false);
 });

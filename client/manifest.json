@@ -20,11 +20,21 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["lib/sensitive-fields.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
+      "js": ["lib/sensitive-fields.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
       "run_at": "document_idle"
     }
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/*",
+        "vendor/mp-wasm/*",
+        "lib/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

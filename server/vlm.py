@@ -48,25 +48,27 @@ def _extract_json(text: str) -> dict:
     return json.loads(t)
 
 
-SENSITIVE_FIELD_RE = re.compile(r"password|passcode|aadhaar|aadhar|pan|ssn|card|cvv|expir|bank|account|passport|govtid|epic|voter", re.I)
+RESTRICTED_PII_RE = re.compile(
+    r"\b(password|passwd|passcode|aadhaar|aadhar|uidai|\bpan\b|\bssn\b|credit[_\s]?card|debit[_\s]?card|\bcvv\b|\bcvc\b|bank[_\s]?account|account[_\s]?no|routing|ifsc|upi|passport|govt[_\s]?id|national[_\s]?id|voter[_\s]?id|\bepic\b|driver[_\s]?license)\b",
+    re.I
+)
 
 
 def _to_response(data: dict, model: str) -> StepResponse:
     raw_actions = [Action(**a) for a in data.get("actions", []) if isinstance(a, dict)]
-    # Safety filter: reject any action targeting a sensitive keyword or trying to fill sensitive data
+    # Safety filter: reject actions trying to fill restricted secret categories or secret literal values
     clean_actions = []
     for act in raw_actions:
-        target = act.targetId or ""
         cat = act.piiCategory or ""
         val = act.literalValue or ""
-        if SENSITIVE_FIELD_RE.search(target) or SENSITIVE_FIELD_RE.search(cat) or SENSITIVE_FIELD_RE.search(val):
+        if RESTRICTED_PII_RE.search(cat) or RESTRICTED_PII_RE.search(val):
             continue
         clean_actions.append(act)
 
     return StepResponse(
         actions=clean_actions,
         rationale=data.get("rationale", ""),
-        done=bool(data.get("done", False)) or (len(raw_actions) > 0 and len(clean_actions) == 0),
+        done=bool(data.get("done", False)),
         model=model,
     )
 
@@ -129,11 +131,15 @@ def _openai(req: StepRequest) -> StepResponse:
 
     resp = client.chat.completions.create(
         model=model,
-        messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": content}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": content},
+        ],
         temperature=0,
-        max_tokens=900,
+        response_format={"type": "json_object"},
     )
-    return _to_response(_extract_json(resp.choices[0].message.content or "{}"), model)
+    text = resp.choices[0].message.content or "{}"
+    return _to_response(_extract_json(text), model)
 
 
 # --------------------------------------------------------------------------
@@ -147,13 +153,14 @@ def _mock(req: StepRequest) -> StepResponse:
             break
         if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled or node.isCensored:
             continue
-        if node.tag in ("input", "textarea") and node.piiCategory and node.hasFill and not node.isCensored:
-            actions.append(Action(action="type", targetId=node.id, piiCategory=node.piiCategory,
-                                  reason=f"fill {node.piiCategory} from local profile"))
-        elif node.tag == "select" and node.options and "country" in (node.label or node.name or "").lower():
-            opt = next((o for o in node.options if o["label"].strip().lower() in ("india", "in")), None)
+        if node.tag in ("input", "textarea") and not node.isCensored:
+            category = node.piiCategory or "full name"
+            actions.append(Action(action="type", targetId=node.id, piiCategory=category,
+                                  reason=f"fill {category} from local profile"))
+        elif node.tag == "select" and node.options:
+            opt = next((o for o in node.options if o.get("label", "").strip().lower() in ("india", "in", "male", "female", "mr", "mrs", "ms")), node.options[0] if node.options else None)
             if opt:
-                actions.append(Action(action="select", targetId=node.id, literalValue=opt["value"], reason="country = India"))
+                actions.append(Action(action="select", targetId=node.id, literalValue=opt.get("value", ""), reason=f"select {opt.get('label')}"))
         elif node.type == "checkbox" and re.search(r"agree|terms|consent", (node.label or ""), re.I):
             actions.append(Action(action="click", targetId=node.id, reason="accept terms"))
 

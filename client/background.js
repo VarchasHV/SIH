@@ -11,7 +11,7 @@
 // can gate each server call / the final submit.
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
-import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isSensitiveCategory } from "./lib/sensitive-fields.js";
+import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
@@ -62,7 +62,7 @@ async function callOffscreen(message, tries = 3) {
 async function injectAgentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
+    files: ["lib/sensitive-fields.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
   });
 }
 
@@ -132,16 +132,21 @@ async function runAgentTask(opts) {
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
-    // 4. SANITIZE SKELETON: COMPLETELY STRIP ALL REDACTED / CENSORED NODES
-    // The server/LLM must NEVER see redacted fields in the skeleton!
-    const unredactedNodes = prep.skeleton.nodes.filter((node) => {
-      if (node.isCensored) return false;
-      if (isSensitiveCategory(node.piiCategory)) return false;
-      if (node.type === "password") return false;
-      const combined = [node.label || "", node.name || "", node.id || "", node.piiCategory || ""].join(" ");
-      if (SENSITIVE_PATTERNS.test(combined)) return false;
-      return true;
-    });
+    // 4. SANITIZE SKELETON: STRIP RESTRICTED SECRETS, KEEP PROFILE FIELDS (ZERO PII VALUES SENT)
+    // Secret fields (password, aadhaar, ssn, card numbers) are stripped from the skeleton.
+    // Profile fields (name, email, phone, address) remain as abstract targets (hasFill: true) with ZERO real values.
+    const unredactedNodes = prep.skeleton.nodes
+      .filter((node) => {
+        if (node.isCensored) return false;
+        if (isRestrictedCategory(node.piiCategory)) return false;
+        if (node.type === "password") return false;
+        return true;
+      })
+      .map((node) => ({
+        ...node,
+        // Wipe any real value state before sending to server/VLM
+        state: node.state === "filled" ? "filled" : "empty",
+      }));
 
     const sanitizedSkeleton = {
       ...prep.skeleton,
@@ -201,9 +206,9 @@ async function runAgentTask(opts) {
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
       const targetNode = unredactedNodes.find((n) => n.id === act.targetId);
-      // Double check node is not censored
-      if (targetNode?.isCensored || isSensitiveCategory(targetNode?.piiCategory)) {
-        emit({ type: "error", step, message: `Action blocked on redacted node ${act.targetId}` });
+      // Double check node is not a restricted secret
+      if (targetNode?.isCensored || isRestrictedCategory(targetNode?.piiCategory)) {
+        emit({ type: "error", step, message: `Action blocked on restricted secret node ${act.targetId}` });
         continue;
       }
       if (targetNode?.piiCategory) {

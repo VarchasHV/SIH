@@ -5,9 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const sensitiveFieldsCode = fs.readFileSync(path.join(__dirname, "../client/lib/sensitive-fields.js"), "utf8")
-  // Strip the ESM export line — content scripts don't use it, and `new Function` can't parse it
-  .replace(/^export\s*\{[^}]*\}\s*;?/m, "");
+const sensitiveFieldsCode = fs.readFileSync(path.join(__dirname, "../client/lib/sensitive-fields.js"), "utf8");
 const redactorCode = fs.readFileSync(path.join(__dirname, "../client/dom-redactor.js"), "utf8");
 const executorCode = fs.readFileSync(path.join(__dirname, "../client/executor.js"), "utf8");
 
@@ -221,11 +219,11 @@ test("Executor - directly types resolved value into non-sensitive input field", 
   const { document, __PL } = setupContext();
 
   const input = document.createElement("INPUT");
-  input.setAttribute("data-pl-id", "email-field");
+  input.setAttribute("data-pl-id", "search-field");
   document.body.appendChild(input);
 
-  await __PL.executeAction({ action: "type", targetId: "email-field" }, "user@example.com");
-  assert.equal(input.value, "user@example.com");
+  await __PL.executeAction({ action: "type", targetId: "search-field" }, "laptop stand");
+  assert.equal(input.value, "laptop stand");
 });
 
 test("Executor - strictly blocks filling into censored/sensitive fields", async () => {

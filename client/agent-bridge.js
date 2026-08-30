@@ -1,33 +1,34 @@
-// Content-script side of the agent loop. No tokenization — profile values are
-// passed directly to the executor. All censored/sensitive fields are strictly
-// blocked from being filled.
+// Content-script side of the agent loop.
+// 1. Profile values stay strictly local on the user's machine (chrome.storage.local).
+// 2. High-risk secret categories (RESTRICTED_PII_CATEGORIES) are marked isCensored: true and blocked.
+// 3. For non-secret profile categories (e.g. name, email, phone, address), when the VLM emits
+//    an action (type targetId, piiCategory), agent-bridge looks up profile[piiCategory] LOCALLY
+//    and passes the value directly to the executor to type into the page.
 
 (function () {
   if (window.__plAgentBridgeLoaded) return; // guard against double injection
   window.__plAgentBridgeLoaded = true;
 
-  const CENSORED_CATEGORIES = window.__PL.CENSORED_CATEGORIES;
+  const RESTRICTED_PII_CATEGORIES = window.__PL.RESTRICTED_PII_CATEGORIES || window.__PL.CENSORED_CATEGORIES;
 
   async function prepare() {
     const { profile = {} } = await chrome.storage.local.get("profile");
-    // Strip any sensitive/censored fields that might have been saved in legacy storage
-    for (const key of Object.keys(profile)) {
-      if (CENSORED_CATEGORIES.has(key)) {
-        delete profile[key];
-      }
-    }
 
     const skeleton = window.__PL.buildSkeleton();
     const domPiiBoxes = window.__PL.domPiiBoxes();
 
-    // Annotate nodes: only non-censored fields with profile data can be filled
+    // Annotate nodes:
+    // - High-risk secrets (password, aadhaar, ssn, card number) are marked isCensored: true
+    // - Profile fields (first name, email, address, phone) have isCensored: false and hasFill: true if profile has data
     for (const node of skeleton.nodes) {
-      if (node.piiCategory && CENSORED_CATEGORIES.has(node.piiCategory)) {
+      if (node.piiCategory && RESTRICTED_PII_CATEGORIES.has(node.piiCategory)) {
         node.isCensored = true;
-        node.hasFill = false; // strictly prohibited from filling
+        node.hasFill = false;
       } else if (node.piiCategory && profile[node.piiCategory]) {
         node.isCensored = false;
         node.hasFill = true;
+      } else {
+        node.hasFill = false;
       }
     }
     return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile) };
@@ -36,12 +37,12 @@
   async function execute(action) {
     const { profile = {} } = await chrome.storage.local.get("profile");
 
-    // Guard: strictly block filling any censored/sensitive category
-    if (action.piiCategory && CENSORED_CATEGORIES.has(action.piiCategory)) {
-      return { ok: false, note: `Blocked: censored category '${action.piiCategory}' cannot be filled` };
+    // Guard: strictly block filling any restricted secret category
+    if (action.piiCategory && RESTRICTED_PII_CATEGORIES.has(action.piiCategory)) {
+      return { ok: false, note: `Blocked: restricted category '${action.piiCategory}' cannot be auto-filled` };
     }
 
-    // Resolve non-sensitive profile value
+    // Resolve profile value LOCALLY from chrome.storage.local
     let value = null;
     if (action.piiCategory && profile[action.piiCategory]) {
       value = profile[action.piiCategory];
@@ -49,8 +50,8 @@
       value = action.literalValue;
     }
 
+    // Pass resolved value directly to the local DOM executor
     const result = await window.__PL.executeAction(action, value);
-    // local read-back check (never leaves the page)
     if (result.ok && action.action === "type" && value != null) {
       result.verified = window.__PL.verifyField(action.targetId, value);
     }
@@ -74,31 +75,43 @@
       const y = (r.y ?? r.bbox?.y ?? 0) / (r.deviceCoords ? dpr : 1);
       const w = (r.w ?? r.bbox?.w ?? 0) / (r.deviceCoords ? dpr : 1);
       const h = (r.h ?? r.bbox?.h ?? 0) / (r.deviceCoords ? dpr : 1);
-      d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
-        (kind === "redact"
-          ? "background:#0a0a0a;outline:1.5px solid #0a0a0a"
-          : "outline:2px solid #48b873;background:rgba(72,184,115,.12)");
+
+      let border = "2px solid #ef4444";
+      let bg = "rgba(239, 68, 68, 0.2)";
+      if (kind === "target") {
+        border = "2px solid #22c55e";
+        bg = "rgba(34, 197, 94, 0.25)";
+      } else if (kind === "hover") {
+        border = "2px dashed #3b82f6";
+        bg = "rgba(59, 130, 246, 0.15)";
+      }
+
+      d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;border:${border};background:${bg};box-sizing:border-box;border-radius:3px;transition:all 0.15s ease`;
       layer.appendChild(d);
     }
-    setTimeout(() => layer && layer.replaceChildren(), 6000);
+    if (kind === "target") {
+      setTimeout(() => {
+        layer.replaceChildren();
+      }, 1200);
+    }
   }
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.action === "PL_PREPARE") {
-      prepare().then((r) => sendResponse({ ok: true, ...r })).catch((e) => sendResponse({ ok: false, error: e.message }));
+  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+    if (request.action === "PL_PREPARE") {
+      prepare()
+        .then((res) => sendResponse({ ok: true, ...res }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     }
-    if (msg.action === "PL_EXECUTE") {
-      execute(msg.step).then((result) => sendResponse({ ok: true, result })).catch((e) => sendResponse({ ok: false, error: e.message }));
+    if (request.action === "PL_EXECUTE") {
+      execute(request.step)
+        .then((res) => sendResponse({ ok: true, result: res }))
+        .catch((err) => sendResponse({ ok: false, error: err.message }));
       return true;
     }
-    if (msg.action === "PL_HIGHLIGHT") {
-      highlight(msg.regions, msg.kind);
+    if (request.action === "PL_HIGHLIGHT") {
+      highlight(request.regions, request.kind);
       sendResponse({ ok: true });
-      return true;
-    }
-    if (msg.action === "PL_RESCAN") {
-      sendResponse({ ok: true, skeleton: window.__PL.buildSkeleton(), domPiiBoxes: window.__PL.domPiiBoxes() });
       return true;
     }
   });

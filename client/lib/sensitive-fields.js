@@ -1,79 +1,121 @@
-// Single source of truth for "is this field sensitive?" across the entire
-// Privacy Lens pipeline. Every call site — skeleton filtering, executor guard,
-// agent-bridge profile sanitisation, and screenshot redaction — MUST use these
-// definitions so there is zero drift.
-//
-// Dual-mode module:
-//   • Content scripts (MV3, no ESM): loaded first via manifest.json
-//     content_scripts, attaches to window.__PL.
-//   • Service worker / offscreen (ESM): imported via `import { … }`.
+// Single source of truth for sensitive field categorization in the content script world.
+// Attaches definitions to window.__PL.
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SENSITIVE_PATTERNS — field-name / attribute regex
-// ═══════════════════════════════════════════════════════════════════════════
-// Every token ≤ 5 chars or that is a common English substring gets \b word
-// boundaries to avoid false-positives (e.g. "Company" matching `pan`).
+(function () {
+  const RESTRICTED_PII_CATEGORIES = new Set([
+    "password",
+    "aadhaar", "Aadhaar",
+    "pan", "PAN",
+    "ssn", "SSN",
+    "credit-card", "credit/debit card number", "credit_card", "debit_card", "card number",
+    "cvv", "CVV/security code", "cvc", "security code",
+    "card expiry", "expiration date", "card expiration", "expiry",
+    "bank account information", "bank account", "account number", "routing number", "iban", "swift", "bic",
+    "passport number", "passport", "passport-in",
+    "government ID", "government_id", "govt_id", "national_id",
+    "driver license", "driver's license", "drivers_license", "driving license",
+    "ifsc", "IFSC",
+    "upi-vpa", "upi",
+    "gstin", "GSTIN",
+    "sensitive",
+  ]);
 
-const SENSITIVE_PATTERNS = /password|passcode|passwd|aadhaar|aadhar|uidai|\bpan\b|pannumber|pancard|\bssn\b|social[_\s]?security|credit[_\s]?card|debit[_\s]?card|card[_\s]?num|\bcvv\b|\bcvc\b|card[_\s]?expir|\bbank\b|account[_\s]?no|routing|\bifsc\b|\bupi\b|passport|govt[_\s]?id|national[_\s]?id|voter[_\s]?id|\bepic\b|\bdriver\b|\blicense\b/i;
+  const CENSORED_CATEGORIES = RESTRICTED_PII_CATEGORIES;
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CENSORED_CATEGORIES — the canonical set of PII category strings that must
-// NEVER leave the client (not in the skeleton, not filled, not in the
-// screenshot label).
-// ═══════════════════════════════════════════════════════════════════════════
+  const PROFILE_PII_CATEGORIES = new Set([
+    "first name", "firstname",
+    "middle initial", "middle name", "middle_name",
+    "last name", "lastname", "surname", "family name",
+    "full name", "fullname", "name",
+    "date of birth", "dob", "birth date", "birthday",
+    "age", "birth place", "place of birth",
+    "sex / gender", "gender", "sex",
+    "title", "salutation",
+    "address", "street address", "address line 1", "address line 2",
+    "city", "state", "province", "state/province", "region", "country",
+    "postal/ZIP code", "zipcode", "zip code", "zip", "postal code", "pincode", "pin code", "postcode",
+    "phone number", "phone", "mobile", "cell phone", "home phone", "work phone", "telephone", "fax", "phone-in",
+    "email", "email address",
+    "username", "user id", "login id",
+    "web site", "website", "url",
+    "company", "organization", "employer",
+    "position", "job title", "occupation", "designation",
+    "income", "salary",
+  ]);
 
-const CENSORED_CATEGORIES = new Set([
-  "aadhaar", "Aadhaar",
-  "pan", "PAN",
-  "ssn", "SSN",
-  "credit-card", "credit/debit card number", "credit_card",
-  "cvv", "CVV/security code",
-  "card expiry",
-  "bank account information",
-  "passport number",
-  "government ID",
-  "password",
-  "ifsc",
-  "upi-vpa",
-  "sensitive",
-]);
+  const SENSITIVE_PATTERNS = new RegExp(
+    [
+      // Auth & Credentials
+      "password", "passcode", "passwd", "\\bpwd\\b",
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═══════════════════════════════════════════════════════════════════════════
+      // Government & National Identifiers
+      "aadhaar", "aadhar", "uidai", "\\buid\\b",
+      "\\bpan\\b", "pannumber", "pancard", "permanent[\\s_]?account",
+      "\\bssn\\b", "social[\\s_]?security",
+      "passport", "voter[\\s_]?id", "\\bepic\\b",
+      "govt[\\s_]?id", "govtid", "government[\\s_]?id", "national[\\s_]?id", "state[\\s_]?id",
+      "driver[\\s_]?license", "drivers[\\s_]?license", "driving[\\s_]?license", "driv_?lic", "dl[\\s_]?num", "license[\\s_]?no",
+      "gstin", "\\bgst\\b",
 
-/**
- * Returns true if `cat` is a censored/sensitive PII category.
- * Checks both the canonical set and the regex (for ad-hoc category strings
- * that aren't in the set but contain sensitive keywords).
- */
-function isSensitiveCategory(cat) {
-  if (!cat) return false;
-  return CENSORED_CATEGORIES.has(cat) || SENSITIVE_PATTERNS.test(cat);
-}
+      // Financial & Payment Data
+      "credit[\\s_]?card", "debit[\\s_]?card", "card[\\s_]?num", "card[\\s_]?type", "cc[\\s_]?num",
+      "\\bcvv\\b", "\\bcvc\\b", "security[\\s_]?code", "card[\\s_]?sec", "csc",
+      "card[\\s_]?exp", "expir", "expiry", "exp[\\s_]?date",
+      "card[\\s_]?user", "cardholder", "name[\\s_]?on[\\s_]?card",
+      "bank[\\s_]?account", "\\bbank\\b", "account[\\s_]?no", "account[\\s_]?number", "routing", "\\biban\\b", "\\bswift\\b",
+      "\\bifsc\\b", "\\bupi\\b", "\\bvpa\\b",
+      "\\bincome\\b", "\\bsalary\\b",
 
-/**
- * Returns true if a concatenated field-text string (name + id + placeholder
- * + aria-label + type + label) matches the sensitive-field regex.
- */
-function isSensitiveText(text) {
-  if (!text) return false;
-  return SENSITIVE_PATTERNS.test(text);
-}
+      // Personal & Demographics
+      "first[\\s_]?name", "fname", "given[\\s_]?name",
+      "middle[\\s_]?name", "middle[\\s_]?initial", "mname",
+      "last[\\s_]?name", "lname", "surname", "family[\\s_]?name",
+      "full[\\s_]?name", "\\bname\\b",
+      "\\bdob\\b", "birth[\\s_]?date", "date[\\s_]?of[\\s_]?birth", "birthday",
+      "\\bage\\b", "birth[\\s_]?place", "gender", "\\bsex\\b", "\\btitle\\b",
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Dual-mode export
-// ═══════════════════════════════════════════════════════════════════════════
+      // Contact & Location Data
+      "address", "street", "addr", "addr1", "addr2", "residence",
+      "\\bcity\\b", "\\bstate\\b", "province", "country",
+      "zip", "postal", "pincode", "pin[\\s_]?code", "postcode", "zipcode",
+      "phone", "mobile", "cell[\\s_]?phone", "telephone", "homephone", "workphone", "\\btel\\b", "\\bfax\\b",
+      "email", "e-mail", "mail[\\s_]?addr",
 
-// Content-script path: attach to window.__PL (available when loaded via
-// manifest.json content_scripts before skeleton.js / executor.js / etc.)
-if (typeof window !== "undefined") {
+      // Digital & Employment
+      "ipv4", "ip[\\s_]?address",
+      "username", "user[\\s_]?id", "login[\\s_]?id", "usrname",
+      "web[\\s_]?site", "website", "\\burl\\b",
+      "company", "organization", "employer",
+      "position", "job[\\s_]?title", "occupation", "designation",
+
+      // Miscellaneous
+      "vehicle", "registration[\\s_]?no", "license[\\s_]?plate",
+      "comment", "message", "feedback", "notes",
+    ].join("|"),
+    "i"
+  );
+
+  function isRestrictedCategory(cat) {
+    if (!cat) return false;
+    return RESTRICTED_PII_CATEGORIES.has(cat);
+  }
+
+  function isSensitiveCategory(cat) {
+    if (!cat) return false;
+    return RESTRICTED_PII_CATEGORIES.has(cat) || PROFILE_PII_CATEGORIES.has(cat) || SENSITIVE_PATTERNS.test(cat);
+  }
+
+  function isSensitiveText(text) {
+    if (!text) return false;
+    return SENSITIVE_PATTERNS.test(text);
+  }
+
   window.__PL = window.__PL || {};
-  window.__PL.SENSITIVE_PATTERNS = SENSITIVE_PATTERNS;
+  window.__PL.RESTRICTED_PII_CATEGORIES = RESTRICTED_PII_CATEGORIES;
   window.__PL.CENSORED_CATEGORIES = CENSORED_CATEGORIES;
+  window.__PL.PROFILE_PII_CATEGORIES = PROFILE_PII_CATEGORIES;
+  window.__PL.SENSITIVE_PATTERNS = SENSITIVE_PATTERNS;
+  window.__PL.isRestrictedCategory = isRestrictedCategory;
   window.__PL.isSensitiveCategory = isSensitiveCategory;
   window.__PL.isSensitiveText = isSensitiveText;
-}
-
-// ESM path: for background.js (service worker) and offscreen.js
-export { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isSensitiveCategory, isSensitiveText };
+})();
