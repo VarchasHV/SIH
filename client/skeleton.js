@@ -1,5 +1,5 @@
 // Builds the sanitized "accessibility skeleton" of the page - the cheap,
-// high-signal channel sent to the server alongside the redacted screenshot.
+// high-signal channel sent to the server alongside the blacked-out screenshot.
 // Never carries a field's actual typed value: only empty / filled / readonly.
 //
 // Shares scope with content.js (same content_scripts entry), so it reuses
@@ -8,6 +8,21 @@
 (function () {
   const INTERACTABLE = "input, textarea, select, button, a[href], [contenteditable], [role=button], [role=textbox], [role=combobox], [role=checkbox], [role=radio], [role=link]";
   let seq = 0;
+
+  const CENSORED_CATEGORIES = new Set([
+    "aadhaar", "Aadhaar",
+    "pan", "PAN",
+    "ssn", "SSN",
+    "credit-card", "credit/debit card number", "credit_card",
+    "cvv", "CVV/security code",
+    "card expiry",
+    "bank account information",
+    "passport number",
+    "government ID",
+    "password",
+    "ifsc",
+    "upi-vpa",
+  ]);
 
   function stamp(el) {
     let id = el.getAttribute("data-pl-id");
@@ -58,6 +73,7 @@
       try {
         piiCategory = classifyElement(el)?.category ?? null;
       } catch {}
+      const isCensored = piiCategory ? CENSORED_CATEGORIES.has(piiCategory) : false;
       const node = {
         id: stamp(el),
         tag,
@@ -68,6 +84,7 @@
         required: el.required || el.getAttribute("aria-required") === "true",
         state: valueState(el),
         piiCategory,
+        isCensored,
         visible: vis,
         // viewport CSS px; multiply by dpr for screenshot-pixel coords
         bbox: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
@@ -113,6 +130,7 @@
   }
 
   window.__PL = window.__PL || {};
+  window.__PL.CENSORED_CATEGORIES = CENSORED_CATEGORIES;
   window.__PL.buildSkeleton = buildSkeleton;
   window.__PL.domPiiBoxes = domPiiBoxes;
 })();

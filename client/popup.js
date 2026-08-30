@@ -1,4 +1,4 @@
-// Popup: profile/vault editor + agent control + activity/egress view.
+// Popup: profile editor (non-sensitive only) + agent control + activity/egress view.
 
 const $ = (s) => document.querySelector(s);
 const statusDot = $("#status-dot");
@@ -11,7 +11,7 @@ document.querySelectorAll(".tab").forEach((t) => {
   });
 });
 
-// ---- profile ------------------------------------------------------
+// ---- profile (ONLY non-sensitive fields; all censored fields stripped) ----
 const PROFILE_FIELDS = [
   ["full name", "Aditi Sharma"],
   ["first name", "Aditi"],
@@ -21,18 +21,12 @@ const PROFILE_FIELDS = [
   ["date of birth", "14/03/1998"],
   ["address", "42 Nehru Road, Bengaluru"],
   ["postal/ZIP code", "560001"],
-  ["Aadhaar", "2234 5678 9012"],
-  ["PAN", "ABCPS1234K"],
-  ["passport number", "P1234567"],
-  ["credit/debit card number", "4111 1111 1111 1111"],
-  ["CVV/security code", "123"],
-  ["card expiry", "08/29"],
-  ["bank account information", "50100123456789"],
 ];
 
 async function loadProfile() {
   const { profile = {} } = await chrome.storage.local.get("profile");
   const box = $("#profile-fields");
+  if (!box) return;
   box.replaceChildren();
   for (const [key, ph] of PROFILE_FIELDS) {
     const wrap = document.createElement("label");
@@ -43,21 +37,24 @@ async function loadProfile() {
   }
 }
 
-$("#save-profile").addEventListener("click", async () => {
-  const profile = {};
-  document.querySelectorAll("#profile-fields input").forEach((i) => {
-    if (i.value.trim()) profile[i.dataset.key] = i.value.trim();
+const saveBtn = $("#save-profile");
+if (saveBtn) {
+  saveBtn.addEventListener("click", async () => {
+    const profile = {};
+    document.querySelectorAll("#profile-fields input").forEach((i) => {
+      if (i.value.trim()) profile[i.dataset.key] = i.value.trim();
+    });
+    await chrome.storage.local.set({ profile });
+    $("#saved-note").textContent = `Saved ${Object.keys(profile).length} values locally.`;
+    setTimeout(() => ($("#saved-note").textContent = ""), 2500);
   });
-  await chrome.storage.local.set({ profile });
-  $("#saved-note").textContent = `Saved ${Object.keys(profile).length} values locally.`;
-  setTimeout(() => ($("#saved-note").textContent = ""), 2500);
-});
+}
 
 // ---- presets ----------------------------------------------------
 const PRESETS = [
-  "Fill this job application from my profile. Stop before submitting.",
-  "Complete the checkout shipping + payment form with my details.",
-  "Fill the KYC form (Aadhaar, PAN, address). Do not submit.",
+  "Fill this job application with my basic contact info. Stop before submitting.",
+  "Fill the shipping address form with my profile details.",
+  "Fill name and email in this contact form.",
 ];
 const presetRow = $("#presets");
 PRESETS.forEach((p) => {
@@ -86,8 +83,8 @@ function showEgress(evt) {
   const s = evt.visionStats || {};
   const t = evt.timings || {};
   $("#egress-stats").textContent =
-    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · redact ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
-    `regions redacted: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
+    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
+    `regions blacked out: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
     `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}`;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
 }
@@ -100,7 +97,7 @@ function showGate(id, kind) {
   gate.hidden = false;
   $("#gate-text").textContent = kind === "submit"
     ? "The agent wants to SUBMIT the form. Allow?"
-    : "Send this redacted context to the server?";
+    : "Send this blacked-out context to the server?";
 }
 function resolveGate(approved) {
   if (!pendingGateId) return;
@@ -117,14 +114,14 @@ chrome.runtime.onMessage.addListener((m) => {
   const e = m.evt;
   switch (e.type) {
     case "step-start": log(`— step ${e.step} —`); break;
-    case "egress": showEgress(e); log(`redacted & packaged (step ${e.step})`); break;
+    case "egress": showEgress(e); log(`censored with black boxes (step ${e.step})`); break;
     case "gate": showGate(e.id, e.kind); break;
     case "plan":
       log(`server: ${e.rationale || "(plan)"} · ${e.actions.length} action(s) · ${e.roundTripMs}ms`);
       break;
     case "action": {
       const r = e.result || {};
-      log(`${e.action.action} ${e.action.targetId || ""} ${e.action.valueToken || ""} → ${r.note || "?"}${r.verified === false ? " (unverified)" : ""}`, r.ok ? "ok" : "err");
+      log(`${e.action.action} ${e.action.targetId || ""} → ${r.note || "?"}${r.verified === false ? " (unverified)" : ""}`, r.ok ? "ok" : "err");
       break;
     }
     case "error": log(`error [${e.where || ""}]: ${e.message}`, "err"); break;
@@ -157,7 +154,7 @@ $("#run-button").addEventListener("click", () => {
     opts: {
       goal,
       serverUrl: $("#serverUrl").value.trim() || "http://localhost:8000",
-      redactionMode: $("#redactionMode").value,
+      redactionMode: "blackout",
       confirmEachSend: $("#confirmEachSend").checked,
       confirmBeforeSubmit: $("#confirmBeforeSubmit").checked,
     },

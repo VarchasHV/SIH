@@ -36,9 +36,7 @@
       <label class="field"><span>Server URL</span><input id="serverUrl" type="text" value="http://localhost:8000" /></label>
       <label class="field"><span>Redaction</span>
         <select id="redactionMode">
-          <option value="blur">Blur / pixelate</option>
-          <option value="pixelate">Pixelate (mosaic)</option>
-          <option value="blackout">Blackout</option>
+          <option value="blackout" selected>Blackout (Solid Boxes)</option>
         </select>
       </label>
       <label class="check"><input type="checkbox" id="confirmEachSend" /> Approve every server call</label>
@@ -61,9 +59,9 @@
     <ol id="box-list" class="box-list"><li class="empty">No scan yet.</li></ol>
   </section>
 
-  <!-- PROFILE ---------------------------------------------------------- -->
+  <!-- PROFILE (Only non-sensitive fields; all censored/sensitive fields removed) -->
   <section class="panel" id="tab-profile">
-    <p class="hint">Stored only in this browser (<code>chrome.storage.local</code>). Never sent to the server — the agent fills fields with these values <em>after</em> the server responds with a token.</p>
+    <p class="hint">Stored only locally. All sensitive/censored fields (Aadhaar, PAN, Card, CVV, Passwords, Bank Info, Govt ID) have been removed and are strictly blocked from being filled.</p>
     <div id="profile-fields"></div>
     <button class="scan-button" id="save-profile" type="button">Save profile</button>
     <p class="saved-note" id="saved-note" aria-live="polite"></p>
@@ -80,7 +78,7 @@
     <ol class="log" id="log"><li class="empty">Idle.</li></ol>
   </section>
 
-  <p class="privacy-note">Screenshot is redacted on-device. The server receives only a blurred image + a token-ised structure.</p>
+  <p class="privacy-note">All sensitive items are censored with solid black boxes. Censored fields are never filled by the agent.</p>
 </main>
 <script src="popup.js"></script>
 </body>

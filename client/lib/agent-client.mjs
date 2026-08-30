@@ -6,9 +6,8 @@ export const ACTIONS = ["click", "type", "select", "scroll", "submit", "wait", "
 /**
  * @param {object} action
  * @param {Set<string>} knownIds     - skeleton element ids
- * @param {Set<string>} knownTokens  - tokens present in the vault
  */
-export function validateAction(action, knownIds, knownTokens) {
+export function validateAction(action, knownIds) {
   if (!action || typeof action !== "object") return "not an object";
   if (!ACTIONS.includes(action.action)) return `unknown action "${action.action}"`;
   if (["click", "type", "select"].includes(action.action)) {
@@ -16,20 +15,17 @@ export function validateAction(action, knownIds, knownTokens) {
     if (knownIds && !knownIds.has(action.targetId)) return `unknown targetId "${action.targetId}"`;
   }
   if (["type", "select"].includes(action.action)) {
-    const hasVal = action.valueToken != null || action.literalValue != null;
-    if (!hasVal) return `${action.action} needs valueToken or literalValue`;
-    if (action.valueToken != null && knownTokens && !knownTokens.has(action.valueToken)) {
-      return `unknown valueToken "${action.valueToken}"`;
-    }
+    const hasVal = action.piiCategory != null || action.literalValue != null;
+    if (!hasVal) return `${action.action} needs piiCategory or literalValue`;
   }
   return null; // ok
 }
 
-export function validatePlan(actions, knownIds, knownTokens) {
+export function validatePlan(actions, knownIds) {
   if (!Array.isArray(actions)) return { ok: false, error: "actions is not an array", actions: [] };
   const clean = [];
   for (const a of actions) {
-    const err = validateAction(a, knownIds, knownTokens);
+    const err = validateAction(a, knownIds);
     if (err) return { ok: false, error: err, actions: clean };
     clean.push(a);
     if (a.action === "done") break;

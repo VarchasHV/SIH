@@ -149,7 +149,7 @@ function setupContext() {
   return { window, document, __PL: window.__PL };
 }
 
-test("DOM Redactor - scans and redacts text nodes with Tier 1 tokens", () => {
+test("DOM Redactor - scans and redacts text nodes with solid black boxes", () => {
   const { document, __PL } = setupContext();
 
   const p1 = document.createElement("P");
@@ -165,8 +165,8 @@ test("DOM Redactor - scans and redacts text nodes with Tier 1 tokens", () => {
   const count = __PL.redactTextNodes(document.body);
   assert.equal(count, 2);
 
-  assert.equal(tn1.nodeValue, "Aadhaar: [Aadhaar Redacted] and PAN [PAN Redacted] verified.");
-  assert.equal(tn2.nodeValue, "Phone: [Phone Redacted], SSN: [SSN Redacted], Card: [Card Redacted], Email: [Email Redacted]");
+  assert.equal(tn1.nodeValue, "Aadhaar: ████████████ and PAN ██████████ verified.");
+  assert.equal(tn2.nodeValue, "Phone: ██████████, SSN: ███████████, Card: ████████████████, Email: ████████████████");
 });
 
 test("Executor - handles <select> dropdown by selecting index 1 and firing events", async () => {
@@ -210,27 +210,30 @@ test("Executor - handles <select> fuzzy matching with preference", async () => {
   assert.equal(select.value, "MH");
 });
 
-test("Executor - injects synthetic tokens when no resolved value is provided", async () => {
+test("Executor - directly types resolved value into non-sensitive input field", async () => {
   const { document, __PL } = setupContext();
 
-  const fields = [
-    { id: "f1", pii: "first_name", expected: "Privacy" },
-    { id: "f2", pii: "last_name", expected: "User" },
-    { id: "f3", pii: "email", expected: "redacted@privacylens.local" },
-    { id: "f4", pii: "phone", expected: "9999999999" },
-    { id: "f5", pii: "aadhaar", expected: "000000000000" },
-    { id: "f6", pii: "pan", expected: "XXXXX0000X" },
-    { id: "f7", pii: "credit_card", expected: "4000000000000000" },
-    { id: "f8", pii: "cvv", expected: "000" },
-  ];
+  const input = document.createElement("INPUT");
+  input.setAttribute("data-pl-id", "email-field");
+  document.body.appendChild(input);
 
-  for (const f of fields) {
+  await __PL.executeAction({ action: "type", targetId: "email-field" }, "user@example.com");
+  assert.equal(input.value, "user@example.com");
+});
+
+test("Executor - strictly blocks filling into censored/sensitive fields", async () => {
+  const { document, __PL } = setupContext();
+
+  const sensitiveFields = ["aadhaar", "PAN", "credit-card", "cvv", "ssn", "password", "bank account information"];
+  for (const cat of sensitiveFields) {
     const input = document.createElement("INPUT");
-    input.setAttribute("data-pl-id", f.id);
-    input.setAttribute("data-pl-pii", f.pii);
+    input.setAttribute("data-pl-id", `field-${cat}`);
+    input.setAttribute("data-pl-pii", cat);
     document.body.appendChild(input);
 
-    await __PL.executeAction({ action: "type", targetId: f.id }, null);
-    assert.equal(input.value, f.expected);
+    const res = await __PL.executeAction({ action: "type", targetId: `field-${cat}`, piiCategory: cat }, "1234567890");
+    assert.equal(res.ok, false);
+    assert.match(res.note, /Blocked/);
+    assert.equal(input.value, ""); // input was never filled
   }
 });

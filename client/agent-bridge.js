@@ -1,65 +1,71 @@
-// Content-script side of the agent loop. Owns the ONE place real PII lives at
-// runtime: the in-page vault built from the user's saved profile. Everything it
-// hands to the background service worker is already tokenized.
+// Content-script side of the agent loop. No tokenization — profile values are
+// passed directly to the executor. All censored/sensitive fields are strictly
+// blocked from being filled.
 
 (function () {
   if (window.__plAgentBridgeLoaded) return; // guard against double injection
   window.__plAgentBridgeLoaded = true;
 
-  const PREFIX = {
-    "first name": "FIRSTNAME", "last name": "LASTNAME", "full name": "NAME", email: "EMAIL",
-    "phone number": "PHONE", address: "ADDRESS", "postal/ZIP code": "PIN", "date of birth": "DOB",
-    Aadhaar: "AADHAAR", aadhaar: "AADHAAR", PAN: "PAN", pan: "PAN", "passport number": "PASSPORT",
-    SSN: "SSN", ssn: "SSN", "credit/debit card number": "CARD", "CVV/security code": "CVV",
-    "card expiry": "CARDEXP", "bank account information": "BANKACCT", ifsc: "IFSC", "upi-vpa": "UPI",
-    username: "USERNAME", password: "PASSWORD", "government ID": "GOVTID",
-  };
-  const prefixFor = (c) => PREFIX[c] || String(c || "PII").toUpperCase().replace(/[^A-Z0-9]+/g, "");
-
-  const vault = new Map(); // token -> value
-  const counters = new Map();
-
-  function mint(category) {
-    const p = prefixFor(category);
-    const n = (counters.get(p) || 0) + 1;
-    counters.set(p, n);
-    return `[${p}_${n}]`;
-  }
+  const CENSORED_CATEGORIES = new Set([
+    "aadhaar", "Aadhaar",
+    "pan", "PAN",
+    "ssn", "SSN",
+    "credit-card", "credit/debit card number", "credit_card",
+    "cvv", "CVV/security code",
+    "card expiry",
+    "bank account information",
+    "passport number",
+    "government ID",
+    "password",
+    "ifsc",
+    "upi-vpa",
+  ]);
 
   async function prepare() {
-    vault.clear();
-    counters.clear();
     const { profile = {} } = await chrome.storage.local.get("profile");
-    const profileTokens = {}; // category -> token
-    const tokenContext = {}; // token -> category
-    for (const [category, value] of Object.entries(profile)) {
-      if (value == null || String(value).trim() === "") continue;
-      const token = mint(category);
-      vault.set(token, String(value));
-      profileTokens[category] = token;
-      tokenContext[token] = category;
-    }
-    const skeleton = window.__PL.buildSkeleton();
-    const domPiiBoxes = window.__PL.domPiiBoxes();
-    // annotate each PII skeleton node with the profile token that would fill it
-    for (const node of skeleton.nodes) {
-      if (node.piiCategory && profileTokens[node.piiCategory]) {
-        node.fillToken = profileTokens[node.piiCategory];
+    // Strip any sensitive/censored fields that might have been saved in legacy storage
+    for (const key of Object.keys(profile)) {
+      if (CENSORED_CATEGORIES.has(key)) {
+        delete profile[key];
       }
     }
-    return { skeleton, domPiiBoxes, tokenContext, profileTokens, profileKeys: Object.keys(profile) };
-  }
 
-  function resolve(token) {
-    return token == null ? null : vault.get(token) ?? null;
+    const skeleton = window.__PL.buildSkeleton();
+    const domPiiBoxes = window.__PL.domPiiBoxes();
+
+    // Annotate nodes: only non-censored fields with profile data can be filled
+    for (const node of skeleton.nodes) {
+      if (node.piiCategory && CENSORED_CATEGORIES.has(node.piiCategory)) {
+        node.isCensored = true;
+        node.hasFill = false; // strictly prohibited from filling
+      } else if (node.piiCategory && profile[node.piiCategory]) {
+        node.isCensored = false;
+        node.hasFill = true;
+      }
+    }
+    return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile) };
   }
 
   async function execute(action) {
-    const value = action.valueToken != null ? resolve(action.valueToken) : null;
+    const { profile = {} } = await chrome.storage.local.get("profile");
+
+    // Guard: strictly block filling any censored/sensitive category
+    if (action.piiCategory && CENSORED_CATEGORIES.has(action.piiCategory)) {
+      return { ok: false, note: `Blocked: censored category '${action.piiCategory}' cannot be filled` };
+    }
+
+    // Resolve non-sensitive profile value
+    let value = null;
+    if (action.piiCategory && profile[action.piiCategory]) {
+      value = profile[action.piiCategory];
+    } else if (action.literalValue != null) {
+      value = action.literalValue;
+    }
+
     const result = await window.__PL.executeAction(action, value);
     // local read-back check (never leaves the page)
-    if (result.ok && action.action === "type" && (value ?? action.literalValue) != null) {
-      result.verified = window.__PL.verifyField(action.targetId, value ?? action.literalValue);
+    if (result.ok && action.action === "type" && value != null) {
+      result.verified = window.__PL.verifyField(action.targetId, value);
     }
     return result;
   }
@@ -83,7 +89,7 @@
       const h = (r.h ?? r.bbox?.h ?? 0) / (r.deviceCoords ? dpr : 1);
       d.style.cssText = `position:absolute;left:${x}px;top:${y}px;width:${w}px;height:${h}px;` +
         (kind === "redact"
-          ? "background:repeating-linear-gradient(45deg,rgba(239,111,97,.35)0 6px,rgba(239,111,97,.15)6px 12px);outline:1.5px solid #ef6f61"
+          ? "background:#0a0a0a;outline:1.5px solid #0a0a0a"
           : "outline:2px solid #48b873;background:rgba(72,184,115,.12)");
       layer.appendChild(d);
     }

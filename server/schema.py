@@ -1,10 +1,11 @@
 """Request/response contracts for the agent endpoint.
 
 The server only ever sees sanitized data:
-  - screenshot: a data: URL of the *redacted* image
+  - screenshot: a data: URL of the *redacted* (blacked-out) image
   - skeleton:   the accessibility tree, field values reduced to empty/filled/readonly
-  - token_map:  token -> PII category (never a value)
-  - available_tokens: category -> token the client is able to fill locally
+
+No tokenization: the server sees only structure and a blacked-out screenshot.
+Profile values are resolved locally on the client and never transmitted.
 """
 from __future__ import annotations
 
@@ -31,7 +32,8 @@ class SkeletonNode(BaseModel):
     options: Optional[list[dict[str, str]]] = None
     text: Optional[str] = None
     isSubmit: Optional[bool] = None
-    fillToken: Optional[str] = None
+    isCensored: bool = False
+    hasFill: Optional[bool] = None
 
 
 class Skeleton(BaseModel):
@@ -61,17 +63,15 @@ class StepRequest(BaseModel):
     taskGoal: str
     step: int = 1
     skeleton: Skeleton
-    tokenMap: dict[str, str] = Field(default_factory=dict)
-    availableTokens: dict[str, str] = Field(default_factory=dict)
     visionDetections: list[VisionDetection] = Field(default_factory=list)
-    screenshot: Optional[str] = None  # redacted data: URL
+    screenshot: Optional[str] = None  # redacted (blacked-out) data: URL
     history: list[HistoryItem] = Field(default_factory=list)
 
 
 class Action(BaseModel):
     action: ActionName
     targetId: Optional[str] = None
-    valueToken: Optional[str] = None
+    piiCategory: Optional[str] = None
     literalValue: Optional[str] = None
     reason: Optional[str] = None
 

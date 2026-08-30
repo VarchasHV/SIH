@@ -65,19 +65,19 @@
       category: "aadhaar",
       re: /\b\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g,
       validate: (m) => verhoeffValid(m.replace(/[\s-]/g, "")),
-      token: "[Aadhaar Redacted]",
+      token: "████████████",
     },
     {
       category: "pan",
       re: /\b[A-Z]{5}[0-9]{4}[A-Z]\b/g,
       validate: null,
-      token: "[PAN Redacted]",
+      token: "██████████",
     },
     {
       category: "phone-in",
       re: /(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}\b/g,
       validate: null,
-      token: "[Phone Redacted]",
+      token: "██████████",
     },
     {
       category: "ssn",
@@ -89,19 +89,19 @@
         const A = +a, G = +g, S = +s;
         return A !== 0 && A !== 666 && A < 900 && G !== 0 && S !== 0;
       },
-      token: "[SSN Redacted]",
+      token: "███████████",
     },
     {
       category: "credit-card",
       re: /\b(?:\d[\s-]?){12,19}\b/g,
       validate: (m) => luhnValid(m),
-      token: "[Card Redacted]",
+      token: "████████████████",
     },
     {
       category: "email",
       re: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
       validate: null,
-      token: "[Email Redacted]",
+      token: "████████████████",
     },
   ];
 

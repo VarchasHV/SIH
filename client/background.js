@@ -1,10 +1,10 @@
 // Service worker: orchestrates the privacy-preserving agent loop.
 //
-//   content (PL_PREPARE)  -> skeleton + domPiiBoxes + token context   [PII stays here]
+//   content (PL_PREPARE)  -> skeleton + domPiiBoxes + profile values   [PII stays local]
 //   captureVisibleTab     -> raw screenshot
-//   offscreen (PL_VISION) -> redacted screenshot + vision detections
-//   server  (/agent/step) -> validated action plan                    [sees only tokens]
-//   content (PL_EXECUTE)  -> performs each action, resolving tokens locally
+//   offscreen (PL_VISION) -> redacted screenshot (blackout) + vision detections
+//   server  (/agent/step) -> validated action plan                    [sees only skeleton + redacted image]
+//   content (PL_EXECUTE)  -> performs each action, resolving values locally
 //
 // The popup receives PL_PROGRESS events (including the exact egress payload) and
 // can gate each server call / the final submit.
@@ -13,7 +13,7 @@ import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
-  redactionMode: "blur",
+  redactionMode: "blackout",
   maxSteps: 12,
   confirmEachSend: false,
   confirmBeforeSubmit: true,
@@ -110,14 +110,14 @@ async function runAgentTask(opts) {
     if (running.cancel) { emit({ type: "cancelled", step }); break; }
     emit({ type: "step-start", step });
 
-    // 1. page context (tokenized already)
+    // 1. page context (no tokenization — profile values stay local)
     const prep = await prepare(tabId);
     if (!prep?.ok) throw new Error(prep?.error || "prepare failed");
 
     // 2. raw screenshot
     const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
 
-    // 3. on-device vision + redaction
+    // 3. on-device vision + redaction (always blackout)
     const fields = prep.skeleton.nodes
       .filter((n) => ["input", "textarea", "select"].includes(n.tag) && n.visible)
       .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox }));
@@ -132,7 +132,7 @@ async function runAgentTask(opts) {
       const node = prep.skeleton.nodes.find((n) => n.id === fid);
       if (node && !node.piiCategory) {
         node.piiCategory = cat;
-        node.fillToken = prep.profileTokens[cat] || node.fillToken;
+        node.hasFill = !!(prep.profileValues && prep.profileValues[cat]);
         node.labelSource = "vision";
       }
     }
@@ -140,13 +140,11 @@ async function runAgentTask(opts) {
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
-    // 4. sanitized payload
+    // 4. sanitized payload — NO profile values, NO tokens. Just skeleton + redacted image.
     const payload = {
       taskGoal: cfg.goal,
       step,
       skeleton: prep.skeleton,
-      tokenMap: prep.tokenContext,          // token -> category  (NO values)
-      availableTokens: prep.profileTokens,  // category -> token the client can fill
       visionDetections: vis.detections,
       screenshot: vis.redactedDataURL,
       history: history.slice(-4),
@@ -178,17 +176,16 @@ async function runAgentTask(opts) {
     }
     emit({ type: "plan", step, rationale: plan.rationale, actions: plan.actions, serverLatencyMs: plan.serverLatencyMs, roundTripMs: Math.round(plan.roundTripMs) });
 
-    // 7. validate
+    // 7. validate (no token validation needed anymore)
     const knownIds = new Set(prep.skeleton.nodes.map((n) => n.id));
-    const knownTokens = new Set(Object.keys(prep.tokenContext));
-    const v = validatePlan(plan.actions, knownIds, knownTokens);
+    const v = validatePlan(plan.actions, knownIds, null);
     if (!v.ok) {
       emit({ type: "error", step, where: "validation", message: v.error });
       history.push({ step, error: `invalid action: ${v.error}` });
       continue;
     }
 
-    // 8. execute
+    // 8. execute — pass piiCategory so the bridge can look up values directly
     let doneFlag = false;
     for (const act of v.actions) {
       if (act.action === "submit" && cfg.confirmBeforeSubmit) {
@@ -196,6 +193,10 @@ async function runAgentTask(opts) {
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
       const targetNode = prep.skeleton.nodes.find((n) => n.id === act.targetId);
+      // Enrich the action with piiCategory so executor can look up profile values
+      if (targetNode?.piiCategory) {
+        act.piiCategory = targetNode.piiCategory;
+      }
       send(tabId, { action: "PL_HIGHLIGHT", regions: targetNode ? [targetNode.bbox] : [], kind: "target" }).catch(() => {});
       const res = await send(tabId, { action: "PL_EXECUTE", step: act });
       emit({ type: "action", step, action: act, result: res?.result });
@@ -211,8 +212,8 @@ async function runAgentTask(opts) {
   return { history };
 }
 
-// keep tokens, drop any literalValue that might carry data
-const sanitizeAction = (a) => ({ action: a.action, targetId: a.targetId, valueToken: a.valueToken, hadLiteral: a.literalValue != null });
+// strip any PII-related data from action for history
+const sanitizeAction = (a) => ({ action: a.action, targetId: a.targetId, piiCategory: a.piiCategory, hadLiteral: a.literalValue != null });
 
 // ---- message routing -------------------------------------------------
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {

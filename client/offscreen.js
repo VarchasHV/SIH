@@ -100,7 +100,7 @@ async function runFaces(bitmap) {
   return { dets, ms: performance.now() - t0, available: true };
 }
 
-async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "pixelate" }) {
+async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "blackout" }) {
   const timings = {};
   const tAll = performance.now();
 

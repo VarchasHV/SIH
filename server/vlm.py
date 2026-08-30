@@ -7,8 +7,9 @@ Modes (env VLM_MODE):
   openai - any OpenAI-compatible chat/vision endpoint (vLLM / Ollama / OpenRouter
            hosting Qwen2.5-VL, Llama-3.2-Vision, InternVL2, ...).
   mock   - deterministic agent, no network. Reads the sanitized skeleton and
-           fills PII fields with their fillToken. Offline fallback.
+           fills PII fields by piiCategory. Offline fallback.
 
+No tokenization: the server sees only structure and a blacked-out screenshot.
 Any adapter error falls back to `mock` so a demo never hard-stops.
 """
 from __future__ import annotations
@@ -32,8 +33,6 @@ def _context_json(req: StepRequest) -> str:
         "taskGoal": req.taskGoal,
         "step": req.step,
         "skeleton": req.skeleton.model_dump(exclude_none=True),
-        "tokenMap": req.tokenMap,
-        "availableTokens": req.availableTokens,
         "visionDetections": [d.model_dump() for d in req.visionDetections],
         "history": [h.model_dump(exclude_none=True) for h in req.history],
     })
@@ -132,12 +131,11 @@ def _mock(req: StepRequest) -> StepResponse:
     for node in req.skeleton.nodes:
         if len(actions) >= 4:
             break
-        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled:
+        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled or node.isCensored:
             continue
-        token = node.fillToken or (req.availableTokens.get(node.piiCategory or "") if node.piiCategory else None)
-        if node.tag in ("input", "textarea") and token:
-            actions.append(Action(action="type", targetId=node.id, valueToken=token,
-                                  reason=f"fill {node.piiCategory} from local vault"))
+        if node.tag in ("input", "textarea") and node.piiCategory and node.hasFill and not node.isCensored:
+            actions.append(Action(action="type", targetId=node.id, piiCategory=node.piiCategory,
+                                  reason=f"fill {node.piiCategory} from local profile"))
         elif node.tag == "select" and node.options and "country" in (node.label or node.name or "").lower():
             opt = next((o for o in node.options if o["label"].strip().lower() in ("india", "in")), None)
             if opt:
@@ -156,7 +154,7 @@ def _mock(req: StepRequest) -> StepResponse:
                 return StepResponse(actions=[Action(action="submit", targetId=btn.id)],
                                     rationale="All visible fields handled; submitting.", model="mock")
         return StepResponse(actions=[Action(action="done")], rationale="Nothing left to fill.", done=True, model="mock")
-    return StepResponse(actions=actions, rationale=f"Filling {len(actions)} field(s) from the local vault.", model="mock")
+    return StepResponse(actions=actions, rationale=f"Filling {len(actions)} field(s) from the local profile.", model="mock")
 
 
 _ADAPTERS = {"gemini": _gemini, "openai": _openai, "mock": _mock}

@@ -43,13 +43,12 @@ def health() -> dict:
 @app.get("/privacy")
 def privacy() -> dict:
     return {
-        "scheme": "reversible-tokenization",
-        "token_format": "[CATEGORY_N]",
-        "server_sees": ["redacted screenshot (PII blurred/blacked)",
-                        "accessibility skeleton (values reduced to empty/filled/readonly)",
-                        "token -> category map"],
-        "server_never_sees": ["any real PII value", "raw screenshot", "field contents"],
-        "note": "The client resolves tokens to real values locally, immediately before typing.",
+        "scheme": "blackout-redaction",
+        "redaction_mode": "blackout (solid black boxes)",
+        "server_sees": ["redacted screenshot (all PII blacked out with solid boxes)",
+                        "accessibility skeleton (values reduced to empty/filled/readonly)"],
+        "server_never_sees": ["any real PII value", "raw screenshot", "field contents", "tokens"],
+        "note": "No tokenization. The client resolves PII categories to real values locally, immediately before typing.",
     }
 
 
