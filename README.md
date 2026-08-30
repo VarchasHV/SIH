@@ -40,8 +40,8 @@ moment, and types them in.
 | `client/` | MV3 extension (Chrome + Firefox). Plain JS, no bundler. |
 | `client/lib/*.mjs` | Shared logic: `pii-rules` (regex + Verhoeff/Luhn), `tokenizer` (vault), `redact` (canvas), `merge`, `field-classifier`, `agent-client`. |
 | `client/offscreen.*` | On-device OCR + face detection + redaction. |
-| `server/` | FastAPI agent. `VLM_MODE=mock` (offline, default) or `openai` (any OpenAI-compatible VLM endpoint). |
-| `fixtures/` | 3 demo forms: job application, checkout, KYC. |
+| `server/` | FastAPI agent. `VLM_MODE=gemini` (default), `openai` (any OpenAI-compatible VLM), or `mock` (offline). |
+| `fixtures/` | 4 demo forms: job application, checkout, KYC, and a hostile form (obfuscated names / no labels). |
 | `eval/` | Metric harness (`run_eval.mjs` headless + `eval.html` in-browser). |
 | `tests/` | `node --test` unit tests for the shared logic. |
 
@@ -50,15 +50,16 @@ moment, and types them in.
 ```bash
 npm run fetch:vendor     # download Tesseract.js + MediaPipe into client/vendor/  (~40 MB, once)
 npm run server:install   # pip install FastAPI etc. (use a venv)
-npm test                 # 19 unit tests
+npm test                 # unit tests for the shared logic
 npm run eval             # headless metric report
 ```
 
 ### Run the demo
 
 ```bash
-npm run server           # http://localhost:8000  (VLM_MODE=mock by default)
-npm run fixtures         # http://localhost:4173  (the 3 demo forms)
+cp server/.env.example server/.env   # set GEMINI_API_KEY (default VLM_MODE=gemini, model gemini-3.6-flash)
+npm run server                       # http://localhost:8000
+npm run fixtures                     # http://localhost:4173  (the demo forms)
 ```
 
 1. `chrome://extensions` → Developer mode → **Load unpacked** → select `client/`.
@@ -70,14 +71,17 @@ npm run fixtures         # http://localhost:4173  (the 3 demo forms)
    JSON leaving the machine, the server's plan, and each action being executed on
    the page (redacted regions flash red, targeted fields flash green).
 
-### Real VLM instead of the mock agent
+### VLM options
 
-```bash
-cp server/.env.example server/.env      # set VLM_MODE=openai, VLM_BASE_URL, VLM_API_KEY, VLM_MODEL
-# e.g. OpenRouter qwen/qwen-2.5-vl-7b-instruct, or a local vLLM / Ollama llama3.2-vision
-```
-The redacted screenshot is sent as an `image_url`, so the model genuinely uses
-visual context. Falls back to `mock` automatically if the endpoint errors.
+- **`gemini`** (default) — Google Gemini via `GEMINI_API_KEY`. The redacted
+  screenshot is sent as inline image data, so the model uses real visual context.
+  Default model `gemini-3.6-flash` (`gemini-2.5-flash` is blocked for new API
+  keys as of 2026; `2.5-pro` / `3.5-flash` also work). ~3–30 s/step.
+- **`openai`** — any OpenAI-compatible endpoint (`VLM_BASE_URL` + `VLM_API_KEY` +
+  `VLM_MODEL`): OpenRouter `qwen/qwen-2.5-vl-7b-instruct`, or local vLLM / Ollama
+  `llama3.2-vision`. The "offline-deployable open-weights" path the brief asks for.
+- **`mock`** — deterministic, offline, instant. Best for latency demos and the
+  automatic fallback when a real model errors.
 
 ## Privacy model
 
@@ -108,13 +112,18 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 
 ## Status / limitations
 
-- On-device vision is deliberately **light** (Tesseract OCR + BlazeFace) — the DOM
-  classifier is the primary detector; vision is the safety net for canvas / images
-  / cross-origin frames. A transformer NER (Transformers.js is already vendored)
-  and a screenshot-level PII detector are the next upgrades.
-- The `mock` agent is deterministic (reads the skeleton, fills PII fields from
-  their tokens). It makes the full pipeline run offline and is the fallback when a
-  real VLM misbehaves.
-- Fixtures are written to exercise the classifier; real-world pages score lower.
+- On-device vision is deliberately **light** (Tesseract OCR + BlazeFace). The DOM
+  classifier is primary; the vision channel (a) redacts PII values it OCRs and
+  (b) **names fields the DOM can't** by pairing the nearest OCR caption with an
+  unclassified field (`client/lib/label-assoc.mjs`, folded back into the skeleton
+  by the service worker). A transformer NER (Transformers.js is vendored) is the
+  next upgrade.
+- The field classifier does three passes: exact (`type`/`autocomplete`/`name`/
+  `<label>`), fuzzy (letters-only substring match for obfuscated names like
+  `02frstname`, `24emailadr`), and spatial (caption in a sibling grid/table cell).
+  `hostile-form.html` mirrors the RoboForm test page and scores 16/16.
+- Still weak: `<select>` triples sharing one caption (mm/dd/yy), Shadow DOM.
+- The `mock` agent is deterministic and makes the pipeline run offline; it's also
+  the automatic fallback when a real VLM errors.
 - Firefox: MV3 + offscreen differ slightly; a background-page shim is noted in
   `client/offscreen.js` comments.

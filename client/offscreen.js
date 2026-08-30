@@ -1,12 +1,14 @@
 // Offscreen document: all on-device vision inference + pixel redaction.
 // Kept off the page and the service worker so neither stalls.
 //
-//   in  : { screenshot(dataURL), domPiiBoxes(cssPx), dpr, mode }
-//   out : { redactedDataURL, detections[], stats, timings }  -- NO raw OCR text.
+//   in  : { screenshot(dataURL), domPiiBoxes(cssPx), fields[], dpr, mode }
+//   out : { redactedDataURL, detections[], fieldCategories, stats, timings }
+//         -- NO raw OCR text ever leaves this document.
 
 import { detectPII } from "./lib/pii-rules.mjs";
 import { redactCanvas } from "./lib/redact.mjs";
 import { mergeDetections, redundancyStats } from "./lib/merge.mjs";
+import { associateLabels } from "./lib/label-assoc.mjs";
 
 const url = (p) => chrome.runtime.getURL(p);
 
@@ -81,7 +83,7 @@ async function runOCR(bitmap) {
       });
     }
   }
-  return { dets, lineCount: lines.length, ms: performance.now() - t0 };
+  return { dets, lines, lineCount: lines.length, ms: performance.now() - t0 };
 }
 
 async function runFaces(bitmap) {
@@ -98,7 +100,7 @@ async function runFaces(bitmap) {
   return { dets, ms: performance.now() - t0, available: true };
 }
 
-async function process({ screenshot, domPiiBoxes = [], dpr = 1, mode = "pixelate" }) {
+async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "pixelate" }) {
   const timings = {};
   const tAll = performance.now();
 
@@ -107,11 +109,14 @@ async function process({ screenshot, domPiiBoxes = [], dpr = 1, mode = "pixelate
   canvas.getContext("2d").drawImage(bitmap, 0, 0);
 
   const [ocr, faces] = await Promise.all([
-    runOCR(bitmap).catch((e) => ({ dets: [], lineCount: 0, ms: 0, error: e.message })),
+    runOCR(bitmap).catch((e) => ({ dets: [], lines: [], lineCount: 0, ms: 0, error: e.message })),
     runFaces(bitmap).catch((e) => ({ dets: [], ms: 0, available: false, error: e.message })),
   ]);
   timings.ocrMs = Math.round(ocr.ms);
   timings.faceMs = Math.round(faces.ms);
+
+  // vision-derived field classifications for fields the DOM couldn't name
+  const labelDets = fields.length ? associateLabels(ocr.lines || [], fields, dpr) : [];
 
   // DOM boxes: css px -> screenshot (device) px
   const domScaled = domPiiBoxes.map((d) => ({
@@ -121,8 +126,12 @@ async function process({ screenshot, domPiiBoxes = [], dpr = 1, mode = "pixelate
     bbox: { x: d.bbox.x * dpr, y: d.bbox.y * dpr, w: d.bbox.w * dpr, h: d.bbox.h * dpr },
   }));
 
-  const visionDets = [...ocr.dets, ...faces.dets];
+  const visionDets = [...ocr.dets, ...faces.dets, ...labelDets];
   const merged = mergeDetections(domScaled, visionDets, 0.35);
+
+  // fieldId -> category, for the service worker to enrich the skeleton
+  const fieldCategories = {};
+  for (const d of labelDets) fieldCategories[d.fieldId] = d.category;
 
   // redact: union of every merged region + every raw vision hit
   const regions = merged.map((m) => ({ ...m.bbox, category: m.category }));
@@ -143,10 +152,12 @@ async function process({ screenshot, domPiiBoxes = [], dpr = 1, mode = "pixelate
     redactedDataURL,
     // strip values: only bbox + category + which channel saw it
     detections: merged.map((m) => ({ category: m.category, confidence: Number(m.confidence.toFixed(2)), sources: m.sources, bbox: roundBox(m.bbox), fieldId: m.fieldId })),
+    fieldCategories,
     redactedRegions: applied.regions.map((r) => ({ ...roundBox(r), mode: r.mode, category: r.category })),
     stats: {
       ...redundancyStats(merged),
       ocrLines: ocr.lineCount,
+      visionLabelledFields: labelDets.length,
       faceDetectorAvailable: faces.available,
       ocrError: ocr.error || null,
       faceError: faces.error || null,

@@ -27,8 +27,31 @@ export const MATCHERS = [
 
 const NAME_EXCLUDE = /\b(domain|search|pet|product|file|host|category|display|class|group|event|stage|repo|project|company|brand|user)\b/i;
 
+// Loose substring keywords - obfuscated/truncated name attrs + spatial captions.
+export const LOOSE_KEYWORDS = {
+  password: ["password", "passwd", "passcode", "pwd"],
+  email: ["email", "emailadr", "emailaddress", "mailaddr"],
+  username: ["username", "userid", "loginid", "userlogin"],
+  "phone number": ["phone", "phon", "mobile", "cellphone", "cellphon", "telephone", "homephon", "workphon", "faxphone"],
+  "credit/debit card number": ["cardnumber", "ccnumber", "creditcard", "debitcard", "cardno"],
+  "CVV/security code": ["cvv", "cvc", "cardverification", "securitycode"],
+  "card expiry": ["expiry", "expiration", "ccexp", "cardexp"],
+  "first name": ["firstname", "frstname", "givenname", "forename"],
+  "last name": ["lastname", "surname", "familyname"],
+  "full name": ["fullname", "cardholder", "cardusername", "ccuname", "nameoncard"],
+  "date of birth": ["dateofbirth", "dob", "birthdate", "birthday"],
+  address: ["address", "addressline", "streetaddress", "residence", "adraddress"],
+  "postal/ZIP code": ["zipcode", "postalcode", "pincode", "postcode", "addrzip"],
+  Aadhaar: ["aadhaar", "aadhar", "uidai"],
+  PAN: ["pannumber", "pancard", "permanentaccountnumber"],
+  SSN: ["ssn", "socialsecurity", "persssn"],
+  "passport number": ["passport", "passportno", "passportnumber"],
+  "government ID": ["driverlicense", "driverslicense", "drivinglicense", "drivlic", "licensenumber", "voterid", "epic", "nationalid"],
+  "bank account information": ["bankaccount", "accountnumber", "accountno", "ifsc", "iban", "routingnumber"],
+};
+
 /**
- * @param {{tagName:string,type?:string,name?:string,id?:string,autocomplete?:string,placeholder?:string,ariaLabel?:string,labelText?:string,nearbyText?:string}} s
+ * @param {{tagName:string,type?:string,name?:string,id?:string,autocomplete?:string,placeholder?:string,ariaLabel?:string,labelText?:string,nearbyText?:string,normName?:string}} s
  * @returns {{category:string, confidence:number}|null}
  */
 export function classifySignals(s) {
@@ -36,6 +59,9 @@ export function classifySignals(s) {
   const tag = (s.tagName || "").toLowerCase();
   const type = g("type");
   if (tag === "input" && ["button", "submit", "reset", "image", "file", "checkbox", "radio", "range", "color", "hidden"].includes(type)) return null;
+
+  const normName = (s.normName || (g("name") + g("id"))).replace(/[^a-z]+/g, "");
+  const capLetters = (g("labelText") + g("ariaLabel") + g("placeholder")).replace(/[^a-z]+/g, "");
 
   let best = null;
   let max = 0;
@@ -46,6 +72,13 @@ export function classifySignals(s) {
     if (m.nameId && (m.nameId.test(g("name")) || m.nameId.test(g("id")))) c = Math.max(c, 0.85);
     if (m.labelPlaceholder && (m.labelPlaceholder.test(g("placeholder")) || m.labelPlaceholder.test(g("ariaLabel")) || m.labelPlaceholder.test(g("labelText")))) c = Math.max(c, 0.75);
     if (m.labelPlaceholder && m.labelPlaceholder.test(g("nearbyText"))) c = Math.max(c, 0.45);
+    const loose = LOOSE_KEYWORDS[m.category];
+    if (loose && c < 0.85) {
+      const nm = loose.find((kw) => normName.includes(kw));
+      const cm = !nm && capLetters.length >= 3 && loose.find((kw) => capLetters.includes(kw));
+      if (nm) c = Math.max(c, nm.length >= 9 ? 0.82 : 0.8);
+      else if (cm) c = Math.max(c, cm.length >= 9 ? 0.82 : 0.72);
+    }
     if (c > max) { max = c; best = { category: m.category, confidence: c }; }
   }
   if (max < 0.7) {
@@ -59,4 +92,4 @@ export function classifySignals(s) {
   return max >= 0.5 ? best : null;
 }
 
-export default { MATCHERS, classifySignals };
+export default { MATCHERS, LOOSE_KEYWORDS, classifySignals };

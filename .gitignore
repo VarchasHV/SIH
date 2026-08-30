@@ -21,3 +21,5 @@ eval/out/
 
 # Misc
 *.local
+
+.env

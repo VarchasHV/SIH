@@ -26,9 +26,12 @@ function extractFields(html) {
   while ((m = tagRe.exec(html))) {
     const attrs = {};
     for (const a of m[2].matchAll(/([\w-]+)\s*=\s*"([^"]*)"/g)) attrs[a[1].toLowerCase()] = a[2];
-    // find an enclosing <label> ... text
     const before = html.slice(0, m.index);
+    // enclosing <label> whose text precedes the input...
     const lbl = before.match(/<label[^>]*>([^<]*)<[^>]*$/i);
+    // ...or the nearest preceding caption cell/div (sibling-grid / table layouts)
+    const caps = [...before.matchAll(/>\s*([A-Za-z][^<>]{1,58}?)\s*<\/(?:div|td|th|label|span|dt|p)>/g)];
+    const labelText = (lbl && lbl[1].trim()) || (caps.length ? caps[caps.length - 1][1].trim() : "");
     fields.push({
       tagName: m[1].toLowerCase(),
       type: attrs.type || "",
@@ -37,7 +40,7 @@ function extractFields(html) {
       autocomplete: attrs.autocomplete || "",
       placeholder: attrs.placeholder || "",
       ariaLabel: attrs["aria-label"] || "",
-      labelText: lbl ? lbl[1] : "",
+      labelText,
       gt: attrs["data-gt"] || "",
     });
   }

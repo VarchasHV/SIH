@@ -118,11 +118,24 @@ async function runAgentTask(opts) {
     const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
 
     // 3. on-device vision + redaction
+    const fields = prep.skeleton.nodes
+      .filter((n) => ["input", "textarea", "select"].includes(n.tag) && n.visible)
+      .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox }));
     const vis = await callOffscreen({
       action: "PL_VISION",
-      payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, dpr: prep.skeleton.viewport.dpr, mode: cfg.redactionMode },
+      payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, fields, dpr: prep.skeleton.viewport.dpr, mode: cfg.redactionMode },
     });
     if (!vis?.ok) throw new Error("vision failed: " + (vis?.error || "unknown"));
+
+    // 3b. enrich the skeleton with fields the vision channel could name
+    for (const [fid, cat] of Object.entries(vis.fieldCategories || {})) {
+      const node = prep.skeleton.nodes.find((n) => n.id === fid);
+      if (node && !node.piiCategory) {
+        node.piiCategory = cat;
+        node.fillToken = prep.profileTokens[cat] || node.fillToken;
+        node.labelSource = "vision";
+      }
+    }
 
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});

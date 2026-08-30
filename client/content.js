@@ -115,6 +115,59 @@ const matchers = [
   }
 ];
 
+// Loose substring keywords for fuzzy matching against letters-only name/id and
+// spatial captions. Deliberately specific to limit false positives.
+const LOOSE_KEYWORDS = {
+  'password': ['password', 'passwd', 'passcode', 'pwd'],
+  'email': ['email', 'emailadr', 'emailaddress', 'mailaddr'],
+  'username': ['username', 'userid', 'loginid', 'userlogin'],
+  'phone number': ['phone', 'phon', 'mobile', 'cellphone', 'cellphon', 'telephone', 'homephon', 'workphon', 'faxphone'],
+  'credit/debit card number': ['cardnumber', 'ccnumber', 'creditcard', 'debitcard', 'cardno'],
+  'CVV/security code': ['cvv', 'cvc', 'cardverification', 'securitycode'],
+  'card expiry': ['expiry', 'expiration', 'ccexp', 'cardexp'],
+  'first name': ['firstname', 'frstname', 'givenname', 'forename'],
+  'last name': ['lastname', 'surname', 'familyname'],
+  'full name': ['fullname', 'cardholder', 'cardusername', 'ccuname', 'nameoncard'],
+  'date of birth': ['dateofbirth', 'dob', 'birthdate', 'birthday'],
+  'address': ['address', 'addressline', 'streetaddress', 'residence', 'adraddress'],
+  'postal/ZIP code': ['zipcode', 'postalcode', 'pincode', 'postcode', 'addrzip'],
+  'Aadhaar': ['aadhaar', 'aadhar', 'uidai'],
+  'PAN': ['pannumber', 'pancard', 'permanentaccountnumber'],
+  'SSN': ['ssn', 'socialsecurity', 'persssn'],
+  'passport number': ['passport', 'passportno', 'passportnumber'],
+  'government ID': ['driverlicense', 'driverslicense', 'drivinglicense', 'drivlic', 'licensenumber', 'voterid', 'epic', 'nationalid'],
+  'bank account information': ['bankaccount', 'accountnumber', 'accountno', 'ifsc', 'iban', 'routingnumber'],
+};
+
+// Letters-only text of an element, if it reads like a field caption.
+function captionText(node) {
+  if (!node) return '';
+  const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+  return t && t.length <= 60 && /[a-z]/i.test(t) ? t : '';
+}
+
+// Nearest caption when there is no <label>: table cell to the left, grid column
+// sibling, or a preceding block within an ancestor.
+function spatialLabel(el) {
+  const cell = el.closest('td, th');
+  if (cell) {
+    const c = captionText(cell.previousElementSibling);
+    if (c) return c;
+  }
+  let cur = el;
+  for (let depth = 0; depth < 4 && cur; depth++, cur = cur.parentElement) {
+    const sib = cur.previousElementSibling;
+    if (sib && !sib.querySelector('input, select, textarea') && captionText(sib)) return captionText(sib);
+  }
+  const group = el.closest('[class*="form-group"], [class*="field"], [class*="row"], [class*="col"], dd');
+  if (group) {
+    const label = group.querySelector('label, legend');
+    if (captionText(label)) return captionText(label);
+    if (captionText(group.previousElementSibling)) return captionText(group.previousElementSibling);
+  }
+  return '';
+}
+
 function getElementSignals(el) {
   const tagName = el.tagName.toLowerCase();
   const type = el.getAttribute('type') || '';
@@ -155,6 +208,11 @@ function getElementSignals(el) {
     }
   }
 
+  // Spatial fallback: captions in a sibling grid/table cell rather than a <label>.
+  if (!labelText || labelText.length > 80) {
+    labelText = labelText || spatialLabel(el);
+  }
+
   // Preceding/nearby text content in the parent
   let nearbyText = '';
   const parent = el.parentElement;
@@ -171,7 +229,8 @@ function getElementSignals(el) {
     placeholder: placeholder.toLowerCase(),
     ariaLabel: ariaLabel.toLowerCase(),
     labelText: labelText.toLowerCase(),
-    nearbyText: nearbyText.toLowerCase()
+    nearbyText: nearbyText.toLowerCase(),
+    normName: (name + ' ' + id).toLowerCase().replace(/[^a-z]+/g, '')
   };
 }
 
@@ -224,6 +283,16 @@ function classifyElement(el) {
     // Check nearby text (fallback)
     if (m.labelPlaceholder && m.labelPlaceholder.test(s.nearbyText)) {
       confidence = Math.max(confidence, 0.45);
+    }
+
+    // Fuzzy pass: obfuscated/truncated name attrs + spatial captions.
+    const loose = LOOSE_KEYWORDS[m.category];
+    if (loose && confidence < 0.85) {
+      const nm = loose.find(kw => s.normName.includes(kw));
+      const capLetters = (s.labelText + s.ariaLabel + s.placeholder).replace(/[^a-z]+/gi, '').toLowerCase();
+      const cm = !nm && capLetters.length >= 3 && loose.find(kw => capLetters.includes(kw));
+      if (nm) confidence = Math.max(confidence, nm.length >= 9 ? 0.82 : 0.8);
+      else if (cm) confidence = Math.max(confidence, cm.length >= 9 ? 0.82 : 0.72);
     }
 
     if (confidence > maxConfidence) {

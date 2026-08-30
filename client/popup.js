@@ -87,7 +87,8 @@ function showEgress(evt) {
   const t = evt.timings || {};
   $("#egress-stats").textContent =
     `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · redact ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
-    `regions redacted: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}`;
+    `regions redacted: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
+    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}`;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
 }
 

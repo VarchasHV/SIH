@@ -27,15 +27,37 @@ real DOM + timing. End-to-end latency (metric 5) and vision resource use
 <script type="module">
 import { classifySignals } from "/client/lib/field-classifier.mjs";
 
-const FIXTURES = ["job-application.html", "checkout.html", "kyc.html"];
+const FIXTURES = ["job-application.html", "checkout.html", "kyc.html", "hostile-form.html"];
 const isPII = (c) => c && c !== "safe";
 const pct = (n) => (n * 100).toFixed(1) + "%";
 
+function captionText(node) {
+  if (!node) return "";
+  const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+  return t && t.length <= 60 && /[a-z]/i.test(t) ? t : "";
+}
+function spatialLabel(el) {
+  const cell = el.closest("td, th");
+  if (cell && captionText(cell.previousElementSibling)) return captionText(cell.previousElementSibling);
+  let cur = el;
+  for (let d = 0; d < 4 && cur; d++, cur = cur.parentElement) {
+    const sib = cur.previousElementSibling;
+    if (sib && !sib.querySelector("input,select,textarea") && captionText(sib)) return captionText(sib);
+  }
+  const g = el.closest('[class*="form-group"],[class*="field"],[class*="row"],[class*="col"],dd');
+  if (g) {
+    const l = g.querySelector("label,legend");
+    if (captionText(l)) return captionText(l);
+    if (captionText(g.previousElementSibling)) return captionText(g.previousElementSibling);
+  }
+  return "";
+}
 function signalsFor(el, doc) {
   const id = el.getAttribute("id") || "";
   let labelText = "";
   if (id) labelText = doc.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "";
   if (!labelText) labelText = el.closest("label")?.textContent || "";
+  if (!labelText) labelText = spatialLabel(el);
   return {
     tagName: el.tagName, type: el.getAttribute("type") || "", name: el.getAttribute("name") || "",
     id, autocomplete: el.getAttribute("autocomplete") || "", placeholder: el.getAttribute("placeholder") || "",

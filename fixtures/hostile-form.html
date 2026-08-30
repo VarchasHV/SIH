@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>All-Fields Filling Test (hostile)</title>
+<link rel="stylesheet" href="_form.css" />
+<style>
+  /* Bootstrap-ish grid: caption in one column, field in the next. No <label>. */
+  .grid { display: grid; grid-template-columns: 180px 1fr; gap: 8px 14px; align-items: center; }
+  .grid > div:nth-child(odd) { text-align: right; color: #444; font-size: 13px; }
+  .grid input, .grid select { margin: 0; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>All-Fields Filling Test</h1>
+  <p class="note">Mimics the RoboForm test page: obfuscated <code>name</code> attributes,
+  no <code>id</code> / <code>autocomplete</code> / <code>&lt;label&gt;</code>, captions in a sibling grid cell.
+  Exercises the spatial-label + fuzzy-name classifier paths.</p>
+
+  <div class="grid">
+    <div>Title</div>            <div><input type="text" name="01___title" data-gt="safe" /></div>
+    <div>First Name</div>       <div><input type="text" name="02frstname" data-gt="first name" /></div>
+    <div>Middle Initial</div>   <div><input type="text" name="03middle_i" data-gt="safe" /></div>
+    <div>Last Name</div>        <div><input type="text" name="04lastname" data-gt="last name" /></div>
+    <div>Full Name</div>        <div><input type="text" name="04fullname" data-gt="full name" /></div>
+    <div>Company</div>          <div><input type="text" name="05_company" data-gt="safe" /></div>
+    <div>Address Line 1</div>   <div><input type="text" name="10address1" data-gt="address" /></div>
+    <div>Address Line 2</div>   <div><input type="text" name="11address2" data-gt="address" /></div>
+    <div>City</div>             <div><input type="text" name="13adr_city" data-gt="safe" /></div>
+    <div>State</div>            <div><input type="text" name="14adrstate" data-gt="safe" /></div>
+    <div>Zip</div>              <div><input type="text" name="16addr_zip" data-gt="postal/ZIP code" /></div>
+    <div>Home Phone</div>       <div><input type="text" name="20homephon" data-gt="phone number" /></div>
+    <div>Cell Phone</div>       <div><input type="text" name="23cellphon" data-gt="phone number" /></div>
+    <div>E-mail</div>           <div><input type="text" name="24emailadr" data-gt="email" /></div>
+    <div>Web Site</div>         <div><input type="text" name="25web_site" data-gt="safe" /></div>
+    <div>User ID</div>          <div><input type="text" name="30_user_id" data-gt="username" /></div>
+    <div>Password</div>         <div><input type="password" name="31password" data-gt="password" /></div>
+    <div>Credit Card Number</div><div><input type="text" name="41ccnumber" data-gt="credit/debit card number" /></div>
+    <div>Card Verification Code</div><div><input type="text" name="43cvc" data-gt="CVV/security code" /></div>
+    <div>Card User Name</div>   <div><input type="text" name="44cc_uname" data-gt="full name" /></div>
+    <div>Social Security Number</div><div><input type="text" name="61pers_ssn" data-gt="SSN" /></div>
+    <div>Driver License Number</div><div><input type="text" name="62driv_lic" data-gt="government ID" /></div>
+    <div>Birth Place</div>      <div><input type="text" name="67birth_pl" data-gt="safe" /></div>
+    <div>Income</div>           <div><input type="text" name="68__income" data-gt="safe" /></div>
+    <div>Comments</div>         <div><input type="text" name="72__commnt" data-gt="safe" /></div>
+  </div>
+</div>
+</body>
+</html>
