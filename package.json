@@ -10,6 +10,7 @@
     "serve": "node scripts/serve.mjs . 4173",
     "test": "node --test \"tests/**/*.test.mjs\"",
     "eval": "node eval/run_eval.mjs",
+    "bench": "node eval/bench/gen-corpus.mjs --seed 20260830 && node eval/bench/run.mjs",
     "server": "python3 -m uvicorn main:app --app-dir server --reload --port 8000",
     "server:install": "python3 -m pip install -r server/requirements.txt"
   },

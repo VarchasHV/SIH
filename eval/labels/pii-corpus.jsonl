@@ -5,7 +5,7 @@
 {"text": "Card 4111 1111 1111 1111 expires soon", "categories": ["credit-card"]}
 {"text": "IFSC HDFC0001234 for the transfer", "categories": ["ifsc"]}
 {"text": "pay to aditi@okhdfcbank now", "categories": ["upi-vpa"]}
-{"text": "GST 29ABCDE1234F1Z5 registered", "categories": ["gstin"]}
+{"text": "GST 29ABCTY5544K1ZP registered", "categories": ["gstin"]}
 {"text": "SSN 123-45-6789 on file", "categories": ["ssn"]}
 {"text": "server at 192.168.1.42 responded", "categories": ["ipv4"]}
 {"text": "born 14/03/1998 in Pune", "categories": ["dob"]}
