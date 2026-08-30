@@ -14,9 +14,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from schema import StepRequest, StepResponse
 from vlm import run_step
 
+from pathlib import Path
+
 try:
     from dotenv import load_dotenv
 
+    load_dotenv(Path(__file__).parent / ".env")
     load_dotenv()
 except Exception:  # noqa: BLE001
     pass

@@ -60,7 +60,7 @@ async function callOffscreen(message, tries = 3) {
 async function injectAgentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["content.js", "skeleton.js", "executor.js", "agent-bridge.js"],
+    files: ["content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
   });
 }
 
