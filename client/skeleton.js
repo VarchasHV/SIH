@@ -9,6 +9,8 @@
   const INTERACTABLE = "input, textarea, select, button, a[href], [contenteditable], [role=button], [role=textbox], [role=combobox], [role=checkbox], [role=radio], [role=link]";
   let seq = 0;
 
+  const SENSITIVE_PATTERNS = /password|passcode|passwd|aadhaar|aadhar|uidai|pan|pannumber|pancard|ssn|social_?security|credit_?card|debit_?card|card_?num|cvv|cvc|card_?expir|bank|account_?no|routing|ifsc|upi|passport|govt_?id|national_?id|voter_?id|epic|driver|license/i;
+
   const CENSORED_CATEGORIES = new Set([
     "aadhaar", "Aadhaar",
     "pan", "PAN",
@@ -22,6 +24,7 @@
     "password",
     "ifsc",
     "upi-vpa",
+    "sensitive",
   ]);
 
   function stamp(el) {
@@ -34,7 +37,6 @@
   }
 
   function labelFor(el) {
-    // reuse content.js signal extraction when available
     try {
       const s = getElementSignals(el);
       return (s.labelText || s.ariaLabel || s.placeholder || "").trim().slice(0, 120);
@@ -60,6 +62,31 @@
     return true;
   }
 
+  function detectPiiCategory(el) {
+    const gt = el.getAttribute("data-gt") || el.getAttribute("data-pl-pii");
+    if (gt && gt !== "safe") return gt;
+
+    try {
+      if (typeof classifyElement === "function") {
+        const c = classifyElement(el);
+        if (c?.category) return c.category;
+      }
+    } catch {}
+
+    const textToMatch = [
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("placeholder") || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("type") || "",
+    ].join(" ");
+
+    if (SENSITIVE_PATTERNS.test(textToMatch)) {
+      return "sensitive";
+    }
+    return null;
+  }
+
   function buildSkeleton(opts = {}) {
     const includeHidden = !!opts.includeHidden;
     const dpr = window.devicePixelRatio || 1;
@@ -69,11 +96,14 @@
       const vis = isVisible(el, rect);
       if (!vis && !includeHidden) return;
       const tag = el.tagName.toLowerCase();
-      let piiCategory = null;
-      try {
-        piiCategory = classifyElement(el)?.category ?? null;
-      } catch {}
-      const isCensored = piiCategory ? CENSORED_CATEGORIES.has(piiCategory) : false;
+      const piiCategory = detectPiiCategory(el);
+      const isCensored = piiCategory ? CENSORED_CATEGORIES.has(piiCategory) || SENSITIVE_PATTERNS.test(piiCategory) : false;
+
+      // Mark the DOM element as redacted if censored
+      if (isCensored) {
+        el.setAttribute("data-pl-redacted", "1");
+      }
+
       const node = {
         id: stamp(el),
         tag,
@@ -108,21 +138,18 @@
     };
   }
 
-  // DOM PII boxes, but keyed to skeleton ids so merge.mjs can line them up.
+  // DOM PII boxes, keyed to skeleton ids
   function domPiiBoxes() {
     const out = [];
     document.querySelectorAll("input, textarea, select, [contenteditable]").forEach((el) => {
-      let c = null;
-      try {
-        c = classifyElement(el);
-      } catch {}
-      if (!c) return;
+      const cat = detectPiiCategory(el);
+      if (!cat) return;
       const rect = el.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) return;
       out.push({
         fieldId: stamp(el),
-        category: c.category,
-        confidence: c.confidence,
+        category: cat,
+        confidence: 1.0,
         bbox: { x: rect.left, y: rect.top, w: rect.width, h: rect.height },
       });
     });
@@ -131,6 +158,8 @@
 
   window.__PL = window.__PL || {};
   window.__PL.CENSORED_CATEGORIES = CENSORED_CATEGORIES;
+  window.__PL.SENSITIVE_PATTERNS = SENSITIVE_PATTERNS;
+  window.__PL.detectPiiCategory = detectPiiCategory;
   window.__PL.buildSkeleton = buildSkeleton;
   window.__PL.domPiiBoxes = domPiiBoxes;
 })();

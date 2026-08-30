@@ -1,9 +1,10 @@
-// Executes one validated action from the server. Values are passed directly
-// from the non-sensitive profile — no tokenization.
-// Censored/sensitive fields are strictly blocked from being filled.
+// Executes one validated action from the server.
+// Whatever is redacted/censored is strictly prohibited from being filled.
 
 (function () {
   const byId = (id) => document.querySelector(`[data-pl-id="${CSS.escape(id)}"]`);
+
+  const SENSITIVE_PATTERNS = /password|passcode|passwd|aadhaar|aadhar|uidai|pan|pannumber|pancard|ssn|social_?security|credit_?card|debit_?card|card_?num|cvv|cvc|card_?expir|bank|account_?no|routing|ifsc|upi|passport|govt_?id|national_?id|voter_?id|epic|driver|license/i;
 
   const CENSORED_CATEGORIES = new Set([
     "aadhaar", "Aadhaar",
@@ -18,27 +19,52 @@
     "password",
     "ifsc",
     "upi-vpa",
+    "sensitive",
   ]);
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Check if an element is a censored / sensitive field
+  // Check if an element is a redacted / censored / sensitive field
   // ═══════════════════════════════════════════════════════════════════════
 
   function isElementCensored(el) {
     if (!el) return false;
-    const cat = el.getAttribute("data-pl-pii") || el.getAttribute("data-gt");
-    if (cat && CENSORED_CATEGORIES.has(cat)) return true;
 
+    // 1. Check if marked by dom-redactor or skeleton
+    if (el.hasAttribute("data-pl-redacted") || el.closest("[data-pl-redacted]")) {
+      return true;
+    }
+
+    // 2. Check data attributes
+    const gt = el.getAttribute("data-gt") || el.getAttribute("data-pl-pii");
+    if (gt && (CENSORED_CATEGORIES.has(gt) || SENSITIVE_PATTERNS.test(gt))) {
+      return true;
+    }
+
+    // 3. Check classifyElement
     try {
       if (typeof classifyElement === "function") {
         const c = classifyElement(el);
-        if (c?.category && CENSORED_CATEGORIES.has(c.category)) return true;
+        if (c?.category && (CENSORED_CATEGORIES.has(c.category) || SENSITIVE_PATTERNS.test(c.category))) {
+          return true;
+        }
       }
     } catch {}
 
-    // Check type / autocomplete / attributes
-    const type = (el.getAttribute("type") || "").toLowerCase();
-    if (type === "password") return true;
+    // 4. Check element attributes (name, id, placeholder, label, type)
+    const text = [
+      el.getAttribute("name") || "",
+      el.getAttribute("id") || "",
+      el.getAttribute("placeholder") || "",
+      el.getAttribute("aria-label") || "",
+      el.getAttribute("type") || "",
+      el.closest("label")?.textContent || "",
+    ].join(" ");
+
+    if (SENSITIVE_PATTERNS.test(text)) {
+      return true;
+    }
+
+    if (el.type === "password") return true;
 
     return false;
   }
@@ -124,12 +150,12 @@
     if (!el) return { ok: false, note: `no element ${a.targetId}` };
     el.scrollIntoView?.({ behavior: "instant", block: "center" });
 
-    // Guard: Block typing or filling into any censored / sensitive field
-    if ((a.action === "type" || a.action === "select") && isElementCensored(el)) {
-      return { ok: false, note: `Blocked: element ${a.targetId} is a censored/sensitive field and will not be filled` };
+    // STRICT GUARD: If element is redacted or censored, NEVER touch or fill it!
+    if (isElementCensored(el)) {
+      return { ok: false, note: `Blocked: element ${a.targetId} is redacted/censored and cannot be filled` };
     }
-    if (a.piiCategory && CENSORED_CATEGORIES.has(a.piiCategory)) {
-      return { ok: false, note: `Blocked: ${a.piiCategory} is a censored category and will not be filled` };
+    if (a.piiCategory && (CENSORED_CATEGORIES.has(a.piiCategory) || SENSITIVE_PATTERNS.test(a.piiCategory))) {
+      return { ok: false, note: `Blocked: category ${a.piiCategory} is redacted/censored and cannot be filled` };
     }
 
     if (a.action === "click") {

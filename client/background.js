@@ -3,8 +3,9 @@
 //   content (PL_PREPARE)  -> skeleton + domPiiBoxes + profile values   [PII stays local]
 //   captureVisibleTab     -> raw screenshot
 //   offscreen (PL_VISION) -> redacted screenshot (blackout) + vision detections
-//   server  (/agent/step) -> validated action plan                    [sees only skeleton + redacted image]
-//   content (PL_EXECUTE)  -> performs each action, resolving values locally
+//   filter                -> ALL redacted/sensitive fields are REMOVED from the skeleton
+//   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot
+//   content (PL_EXECUTE)  -> performs actions on unredacted fields only; strictly blocks censored fields
 //
 // The popup receives PL_PROGRESS events (including the exact egress payload) and
 // can gate each server call / the final submit.
@@ -18,6 +19,21 @@ const DEFAULTS = {
   confirmEachSend: false,
   confirmBeforeSubmit: true,
 };
+
+const CENSORED_CATEGORIES = new Set([
+  "aadhaar", "Aadhaar",
+  "pan", "PAN",
+  "ssn", "SSN",
+  "credit-card", "credit/debit card number", "credit_card",
+  "cvv", "CVV/security code",
+  "card expiry",
+  "bank account information",
+  "passport number",
+  "government ID",
+  "password",
+  "ifsc",
+  "upi-vpa",
+]);
 
 // ---- legacy "scan" path (unchanged behaviour for the old popup button) ----
 async function scanActiveTab() {
@@ -110,46 +126,54 @@ async function runAgentTask(opts) {
     if (running.cancel) { emit({ type: "cancelled", step }); break; }
     emit({ type: "step-start", step });
 
-    // 1. page context (no tokenization — profile values stay local)
+    // 1. page context
     const prep = await prepare(tabId);
     if (!prep?.ok) throw new Error(prep?.error || "prepare failed");
 
     // 2. raw screenshot
     const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
 
-    // 3. on-device vision + redaction (always blackout)
+    // 3. on-device vision + blackout redaction
     const fields = prep.skeleton.nodes
       .filter((n) => ["input", "textarea", "select"].includes(n.tag) && n.visible)
       .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox }));
     const vis = await callOffscreen({
       action: "PL_VISION",
-      payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, fields, dpr: prep.skeleton.viewport.dpr, mode: cfg.redactionMode },
+      payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, fields, dpr: prep.skeleton.viewport.dpr, mode: "blackout" },
     });
     if (!vis?.ok) throw new Error("vision failed: " + (vis?.error || "unknown"));
-
-    // 3b. enrich the skeleton with fields the vision channel could name
-    for (const [fid, cat] of Object.entries(vis.fieldCategories || {})) {
-      const node = prep.skeleton.nodes.find((n) => n.id === fid);
-      if (node && !node.piiCategory) {
-        node.piiCategory = cat;
-        node.hasFill = !!(prep.profileValues && prep.profileValues[cat]);
-        node.labelSource = "vision";
-      }
-    }
 
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
-    // 4. sanitized payload — NO profile values, NO tokens. Just skeleton + redacted image.
+    // 4. SANITIZE SKELETON: COMPLETELY STRIP ALL REDACTED / CENSORED NODES
+    // The server/LLM must NEVER see redacted fields in the skeleton!
+    const SENSITIVE_RE = /password|passcode|passwd|aadhaar|aadhar|uidai|pan|ssn|social_?security|credit_?card|debit_?card|card_?num|cvv|cvc|card_?expir|bank|account_?no|routing|ifsc|upi|passport|govt_?id|national_?id|voter_?id|epic|driver|license/i;
+
+    const unredactedNodes = prep.skeleton.nodes.filter((node) => {
+      if (node.isCensored) return false;
+      if (node.piiCategory && (CENSORED_CATEGORIES.has(node.piiCategory) || SENSITIVE_RE.test(node.piiCategory))) return false;
+      if (node.type === "password") return false;
+      const combined = [node.label || "", node.name || "", node.id || "", node.piiCategory || ""].join(" ");
+      if (SENSITIVE_RE.test(combined)) return false;
+      return true;
+    });
+
+    const sanitizedSkeleton = {
+      ...prep.skeleton,
+      nodes: unredactedNodes,
+    };
+
+    // 5. Sanitized payload sent to server — zero PII, zero tokens, zero redacted nodes
     const payload = {
       taskGoal: cfg.goal,
       step,
-      skeleton: prep.skeleton,
-      visionDetections: vis.detections,
+      skeleton: sanitizedSkeleton,
+      visionDetections: [], // Never send PII category names/locations to the LLM
       screenshot: vis.redactedDataURL,
       history: history.slice(-4),
     };
-    sanitizedPayloadForPreview = { ...payload, screenshot: "<redacted image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
+    sanitizedPayloadForPreview = { ...payload, screenshot: "<blacked-out image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
 
     emit({
       type: "egress",
@@ -160,13 +184,13 @@ async function runAgentTask(opts) {
       timings: vis.timings,
     });
 
-    // 5. optional human gate before the network call
+    // 6. optional human gate before the network call
     if (cfg.confirmEachSend) {
       const ok = await waitForGate(`send-${step}`, "send");
       if (!ok) { emit({ type: "cancelled", step }); break; }
     }
 
-    // 6. server round-trip
+    // 7. server round-trip
     let plan;
     try {
       plan = await requestStep(cfg.serverUrl, payload);
@@ -176,24 +200,28 @@ async function runAgentTask(opts) {
     }
     emit({ type: "plan", step, rationale: plan.rationale, actions: plan.actions, serverLatencyMs: plan.serverLatencyMs, roundTripMs: Math.round(plan.roundTripMs) });
 
-    // 7. validate (no token validation needed anymore)
-    const knownIds = new Set(prep.skeleton.nodes.map((n) => n.id));
-    const v = validatePlan(plan.actions, knownIds, null);
+    // 8. validate: ensure actions ONLY target unredacted, non-censored nodes
+    const allowedIds = new Set(unredactedNodes.map((n) => n.id));
+    const v = validatePlan(plan.actions, allowedIds);
     if (!v.ok) {
       emit({ type: "error", step, where: "validation", message: v.error });
       history.push({ step, error: `invalid action: ${v.error}` });
       continue;
     }
 
-    // 8. execute — pass piiCategory so the bridge can look up values directly
+    // 9. execute
     let doneFlag = false;
     for (const act of v.actions) {
       if (act.action === "submit" && cfg.confirmBeforeSubmit) {
         const ok = await waitForGate(`submit-${step}`, "submit");
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
-      const targetNode = prep.skeleton.nodes.find((n) => n.id === act.targetId);
-      // Enrich the action with piiCategory so executor can look up profile values
+      const targetNode = unredactedNodes.find((n) => n.id === act.targetId);
+      // Double check node is not censored
+      if (targetNode?.isCensored || (targetNode?.piiCategory && CENSORED_CATEGORIES.has(targetNode.piiCategory))) {
+        emit({ type: "error", step, message: `Action blocked on redacted node ${act.targetId}` });
+        continue;
+      }
       if (targetNode?.piiCategory) {
         act.piiCategory = targetNode.piiCategory;
       }
@@ -226,7 +254,6 @@ chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
       return true;
     case "PL_RUN_TASK":
       if (running) { sendResponse({ ok: false, error: "a task is already running" }); return false; }
-      // respond immediately; the run is driven entirely through PL_PROGRESS events
       sendResponse({ ok: true, started: true });
       runAgentTask(request.opts).catch((e) => { running = null; emit({ type: "error", message: e.message }); emit({ type: "finished", history: [] }); });
       return false;

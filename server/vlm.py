@@ -48,11 +48,25 @@ def _extract_json(text: str) -> dict:
     return json.loads(t)
 
 
+SENSITIVE_FIELD_RE = re.compile(r"password|passcode|aadhaar|aadhar|pan|ssn|card|cvv|expir|bank|account|passport|govtid|epic|voter", re.I)
+
+
 def _to_response(data: dict, model: str) -> StepResponse:
+    raw_actions = [Action(**a) for a in data.get("actions", []) if isinstance(a, dict)]
+    # Safety filter: reject any action targeting a sensitive keyword or trying to fill sensitive data
+    clean_actions = []
+    for act in raw_actions:
+        target = act.targetId or ""
+        cat = act.piiCategory or ""
+        val = act.literalValue or ""
+        if SENSITIVE_FIELD_RE.search(target) or SENSITIVE_FIELD_RE.search(cat) or SENSITIVE_FIELD_RE.search(val):
+            continue
+        clean_actions.append(act)
+
     return StepResponse(
-        actions=[Action(**a) for a in data.get("actions", []) if isinstance(a, dict)],
+        actions=clean_actions,
         rationale=data.get("rationale", ""),
-        done=bool(data.get("done", False)),
+        done=bool(data.get("done", False)) or (len(raw_actions) > 0 and len(clean_actions) == 0),
         model=model,
     )
 
