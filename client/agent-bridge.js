@@ -31,16 +31,28 @@
 
     // Annotate nodes:
     // - High-risk secrets (password, aadhaar, ssn, card number) are marked isCensored: true
-    // - Profile fields (first name, email, address, phone) have isCensored: false and hasFill: true if profile has data
+    // - If profile has local data for piiCategory, node.hasFill = true and node.fillToken = "local:<category>"
     for (const node of skeleton.nodes) {
-      if (node.piiCategory && RESTRICTED_PII_CATEGORIES.has(node.piiCategory)) {
+      const piiCat = node.piiCategory;
+      const profileVal = piiCat ? resolveProfileValue(profile, piiCat) : null;
+
+      if (piiCat && RESTRICTED_PII_CATEGORIES.has(piiCat)) {
         node.isCensored = true;
-        node.hasFill = false;
-      } else if (node.piiCategory && resolveProfileValue(profile, node.piiCategory)) {
+        if (profileVal != null) {
+          node.hasFill = true;
+          node.fillToken = `local:${piiCat}`;
+        } else {
+          node.hasFill = false;
+          node.fillToken = null;
+        }
+      } else if (piiCat && profileVal != null) {
         node.isCensored = false;
         node.hasFill = true;
+        node.fillToken = `local:${piiCat}`;
       } else {
+        node.isCensored = false;
         node.hasFill = false;
+        node.fillToken = null;
       }
     }
     return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile) };
@@ -49,18 +61,20 @@
   async function execute(action) {
     const { profile = {} } = await chrome.storage.local.get("profile");
 
-    // Guard: strictly block filling any restricted secret category
-    if (action.piiCategory && RESTRICTED_PII_CATEGORIES.has(action.piiCategory)) {
-      return { ok: false, note: `Blocked: restricted category '${action.piiCategory}' cannot be auto-filled` };
+    let category = action.piiCategory;
+    if (!category && action.fillToken) {
+      category = action.fillToken.replace(/^local:/, "");
     }
 
-    // Resolve profile value LOCALLY from chrome.storage.local
-    let value = null;
-    if (action.piiCategory) {
-      value = resolveProfileValue(profile, action.piiCategory);
-    }
+    // Resolve profile value LOCALLY on device
+    let value = category ? resolveProfileValue(profile, category) : null;
     if (value == null && action.literalValue != null) {
       value = action.literalValue;
+    }
+
+    // Guard: only block if there is genuinely no local profile value for a censored field
+    if (value == null && category && RESTRICTED_PII_CATEGORIES.has(category)) {
+      return { ok: false, note: `Blocked: no local profile data available to fill censored category '${category}'` };
     }
 
     // Pass resolved value directly to the local DOM executor

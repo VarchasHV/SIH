@@ -226,7 +226,7 @@ test("Executor - directly types resolved value into non-sensitive input field", 
   assert.equal(input.value, "laptop stand");
 });
 
-test("Executor - strictly blocks filling into censored/sensitive fields", async () => {
+test("Executor - fills tokenized censored field when local profile value is supplied and blocks when missing", async () => {
   const { document, __PL } = setupContext();
 
   const sensitiveFields = ["aadhaar", "PAN", "credit-card", "cvv", "ssn", "password", "bank account information"];
@@ -236,9 +236,18 @@ test("Executor - strictly blocks filling into censored/sensitive fields", async 
     input.setAttribute("data-pl-pii", cat);
     document.body.appendChild(input);
 
-    const res = await __PL.executeAction({ action: "type", targetId: `field-${cat}`, piiCategory: cat }, "1234567890");
-    assert.equal(res.ok, false);
-    assert.match(res.note, /Blocked/);
-    assert.equal(input.value, ""); // input was never filled
+    // 1. Local resolution supplies real value -> Filled successfully on device!
+    const resSuccess = await __PL.executeAction({ action: "type", targetId: `field-${cat}`, fillToken: `local:${cat}` }, "999-00-1234");
+    assert.equal(resSuccess.ok, true);
+    assert.equal(input.value, "999-00-1234");
+
+    // Reset input
+    input.value = "";
+
+    // 2. Local resolution supplies null (no local data) -> Blocked!
+    const resBlocked = await __PL.executeAction({ action: "type", targetId: `field-${cat}`, fillToken: `local:${cat}` }, null);
+    assert.equal(resBlocked.ok, false);
+    assert.match(resBlocked.note, /Blocked/);
+    assert.equal(input.value, "");
   }
 });

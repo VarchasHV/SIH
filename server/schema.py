@@ -34,6 +34,7 @@ class SkeletonNode(BaseModel):
     isSubmit: Optional[bool] = None
     isCensored: bool = False
     hasFill: Optional[bool] = None
+    fillToken: Optional[str] = None
 
 
 class Skeleton(BaseModel):
@@ -72,6 +73,7 @@ class Action(BaseModel):
     action: ActionName
     targetId: Optional[str] = None
     piiCategory: Optional[str] = None
+    fillToken: Optional[str] = None
     literalValue: Optional[str] = None
     reason: Optional[str] = None
 

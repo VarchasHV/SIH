@@ -56,12 +56,11 @@ RESTRICTED_PII_RE = re.compile(
 
 def _to_response(data: dict, model: str) -> StepResponse:
     raw_actions = [Action(**a) for a in data.get("actions", []) if isinstance(a, dict)]
-    # Safety filter: reject actions trying to fill restricted secret categories or secret literal values
+    # Safety filter: reject actions trying to fill raw secret values in literalValue
     clean_actions = []
     for act in raw_actions:
-        cat = act.piiCategory or ""
         val = act.literalValue or ""
-        if RESTRICTED_PII_RE.search(cat) or RESTRICTED_PII_RE.search(val):
+        if RESTRICTED_PII_RE.search(val):
             continue
         clean_actions.append(act)
 
@@ -151,18 +150,24 @@ def _mock(req: StepRequest) -> StepResponse:
     for node in req.skeleton.nodes:
         if len(actions) >= 4:
             break
-        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled or node.isCensored:
+        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled:
             continue
-        if node.tag in ("input", "textarea") and not node.isCensored:
-            category = node.piiCategory or "full name"
-            actions.append(Action(action="type", targetId=node.id, piiCategory=category,
-                                  reason=f"fill {category} from local profile"))
-        elif node.tag == "select" and node.options:
-            opt = next((o for o in node.options if o.get("label", "").strip().lower() in ("india", "in", "male", "female", "mr", "mrs", "ms")), node.options[0] if node.options else None)
-            if opt:
-                actions.append(Action(action="select", targetId=node.id, literalValue=opt.get("value", ""), reason=f"select {opt.get('label')}"))
-        elif node.type == "checkbox" and re.search(r"agree|terms|consent", (node.label or ""), re.I):
-            actions.append(Action(action="click", targetId=node.id, reason="accept terms"))
+        if node.isCensored:
+            if node.hasFill:
+                token = node.fillToken or (f"local:{node.piiCategory}" if node.piiCategory else "local:sensitive")
+                actions.append(Action(action="type", targetId=node.id, piiCategory=node.piiCategory, fillToken=token,
+                                      reason=f"fill tokenized field via local token {token}"))
+        else:
+            if node.tag in ("input", "textarea"):
+                category = node.piiCategory or "full name"
+                actions.append(Action(action="type", targetId=node.id, piiCategory=category, fillToken=f"local:{category}",
+                                      reason=f"fill {category} from local profile"))
+            elif node.tag == "select" and node.options:
+                opt = next((o for o in node.options if o.get("label", "").strip().lower() in ("india", "in", "male", "female", "mr", "mrs", "ms")), node.options[0] if node.options else None)
+                if opt:
+                    actions.append(Action(action="select", targetId=node.id, literalValue=opt.get("value", ""), reason=f"select {opt.get('label')}"))
+            elif node.type == "checkbox" and re.search(r"agree|terms|consent", (node.label or ""), re.I):
+                actions.append(Action(action="click", targetId=node.id, reason="accept terms"))
 
     goal = req.taskGoal or ""
     wants_submit = bool(_SUBMIT_WORDS.search(goal)) and not _NO_SUBMIT_WORDS.search(goal)

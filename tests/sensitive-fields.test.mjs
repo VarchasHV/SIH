@@ -153,3 +153,45 @@ test("isSensitiveText detects sensitive substrings in combined attribute text", 
   assert.equal(isSensitiveText("search_query q Enter search text"), false);
   assert.equal(isSensitiveText("promo_code coupon Enter discount text"), false);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Parity test: sensitive-fields.js (IIFE) must match sensitive-fields.mjs (ESM)
+// ═══════════════════════════════════════════════════════════════════════════
+
+import vm from "node:vm";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+test("sensitive-fields.js (content script IIFE) and sensitive-fields.mjs (ESM) must be identical", () => {
+  const jsPath = path.join(__dirname, "../client/lib/sensitive-fields.js");
+  const jsContent = fs.readFileSync(jsPath, "utf8");
+
+  const context = { window: {} };
+  vm.createContext(context);
+  vm.runInContext(jsContent, context);
+
+  const windowPL = context.window.__PL;
+  assert.ok(windowPL, "window.__PL should be defined by sensitive-fields.js");
+
+  // Compare RESTRICTED_PII_CATEGORIES
+  assert.deepEqual(
+    Array.from(windowPL.RESTRICTED_PII_CATEGORIES).sort(),
+    Array.from(CENSORED_CATEGORIES).sort(),
+    "RESTRICTED_PII_CATEGORIES in sensitive-fields.js must match sensitive-fields.mjs"
+  );
+
+  // Compare SENSITIVE_PATTERNS regex source & flags
+  assert.equal(
+    windowPL.SENSITIVE_PATTERNS.source,
+    SENSITIVE_PATTERNS.source,
+    "SENSITIVE_PATTERNS regex source must match"
+  );
+  assert.equal(
+    windowPL.SENSITIVE_PATTERNS.flags,
+    SENSITIVE_PATTERNS.flags,
+    "SENSITIVE_PATTERNS regex flags must match"
+  );
+});

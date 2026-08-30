@@ -135,12 +135,9 @@
     if (!el) return { ok: false, note: `no element ${a.targetId}` };
     el.scrollIntoView?.({ behavior: "instant", block: "center" });
 
-    // STRICT GUARD: If element is redacted or censored, NEVER touch or fill it!
-    if (isElementCensored(el)) {
-      return { ok: false, note: `Blocked: element ${a.targetId} is redacted/censored and cannot be filled` };
-    }
-    if (a.piiCategory && (CENSORED_CATEGORIES.has(a.piiCategory) || SENSITIVE_PATTERNS.test(a.piiCategory))) {
-      return { ok: false, note: `Blocked: category ${a.piiCategory} is redacted/censored and cannot be filled` };
+    // Guard: If element is redacted/censored and no resolved local profile value was provided, block filling
+    if ((isElementCensored(el) || (a.piiCategory && SENSITIVE_PATTERNS.test(a.piiCategory))) && resolvedValue == null) {
+      return { ok: false, note: `Blocked: element ${a.targetId} is redacted/censored and no local profile value is available` };
     }
 
     if (a.action === "click") {

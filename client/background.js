@@ -132,28 +132,38 @@ async function runAgentTask(opts) {
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
-    // 4. SANITIZE SKELETON: STRIP RESTRICTED SECRETS, KEEP PROFILE FIELDS (ZERO PII VALUES SENT)
-    // Secret fields (password, aadhaar, ssn, card numbers) are stripped from the skeleton.
-    // Profile fields (name, email, phone, address) remain as abstract targets (hasFill: true) with ZERO real values.
-    const unredactedNodes = prep.skeleton.nodes
-      .filter((node) => {
-        if (node.isCensored) return false;
-        if (isRestrictedCategory(node.piiCategory)) return false;
-        if (node.type === "password") return false;
-        return true;
-      })
-      .map((node) => ({
+    // 4. SANITIZE SKELETON: PRESERVE CENSORED NODES WITH LOCAL FILL TOKENS, STRIP REAL DATA LEAKS
+    // The server sees element structure + isCensored: true + fillToken ("local:category"), with ZERO real values or label text.
+    const sanitizedNodes = prep.skeleton.nodes.map((node) => {
+      if (node.isCensored) {
+        return {
+          id: node.id,
+          tag: node.tag,
+          type: node.type,
+          role: node.role,
+          visible: node.visible,
+          bbox: node.bbox,
+          isCensored: true,
+          hasFill: !!node.hasFill,
+          fillToken: node.fillToken || (node.piiCategory ? `local:${node.piiCategory}` : null),
+          piiCategory: node.piiCategory || null,
+          label: "", // Strip label text to prevent raw PII text leakage
+          name: null,
+          state: node.state === "filled" ? "filled" : "empty",
+        };
+      }
+      return {
         ...node,
-        // Wipe any real value state before sending to server/VLM
         state: node.state === "filled" ? "filled" : "empty",
-      }));
+      };
+    });
 
     const sanitizedSkeleton = {
       ...prep.skeleton,
-      nodes: unredactedNodes,
+      nodes: sanitizedNodes,
     };
 
-    // 5. Sanitized payload sent to server — zero PII, zero tokens, zero redacted nodes
+    // 5. Sanitized payload sent to server — zero PII, zero raw secret values
     const payload = {
       taskGoal: cfg.goal,
       step,
@@ -184,13 +194,14 @@ async function runAgentTask(opts) {
     try {
       plan = await requestStep(cfg.serverUrl, payload);
     } catch (e) {
-      emit({ type: "error", step, where: "server", message: e.message });
+      const where = e.isNetworkError ? "network (server offline)" : `server (HTTP ${e.status || "error"})`;
+      emit({ type: "error", step, where, message: e.message });
       break;
     }
     emit({ type: "plan", step, rationale: plan.rationale, actions: plan.actions, serverLatencyMs: plan.serverLatencyMs, roundTripMs: Math.round(plan.roundTripMs) });
 
-    // 8. validate: ensure actions ONLY target unredacted, non-censored nodes
-    const allowedIds = new Set(unredactedNodes.map((n) => n.id));
+    // 8. validate: ensure actions ONLY target known nodes in skeleton
+    const allowedIds = new Set(sanitizedNodes.map((n) => n.id));
     const v = validatePlan(plan.actions, allowedIds);
     if (!v.ok) {
       emit({ type: "error", step, where: "validation", message: v.error });
@@ -205,14 +216,17 @@ async function runAgentTask(opts) {
         const ok = await waitForGate(`submit-${step}`, "submit");
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
-      const targetNode = unredactedNodes.find((n) => n.id === act.targetId);
-      // Double check node is not a restricted secret
-      if (targetNode?.isCensored || isRestrictedCategory(targetNode?.piiCategory)) {
-        emit({ type: "error", step, message: `Action blocked on restricted secret node ${act.targetId}` });
+      const targetNode = sanitizedNodes.find((n) => n.id === act.targetId);
+      // Double check guard: only block if targetNode is censored AND has no local fill data available
+      if (targetNode?.isCensored && !targetNode?.hasFill && !targetNode?.fillToken) {
+        emit({ type: "error", step, message: `Action blocked on censored node ${act.targetId}: no local profile data to fill` });
         continue;
       }
       if (targetNode?.piiCategory) {
         act.piiCategory = targetNode.piiCategory;
+      }
+      if (targetNode?.fillToken) {
+        act.fillToken = targetNode.fillToken;
       }
       send(tabId, { action: "PL_HIGHLIGHT", regions: targetNode ? [targetNode.bbox] : [], kind: "target" }).catch(() => {});
       const res = await send(tabId, { action: "PL_EXECUTE", step: act });

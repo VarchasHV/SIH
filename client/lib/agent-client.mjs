@@ -15,8 +15,8 @@ export function validateAction(action, knownIds) {
     if (knownIds && !knownIds.has(action.targetId)) return `unknown targetId "${action.targetId}"`;
   }
   if (["type", "select"].includes(action.action)) {
-    const hasVal = action.piiCategory != null || action.literalValue != null;
-    if (!hasVal) return `${action.action} needs piiCategory or literalValue`;
+    const hasVal = action.piiCategory != null || action.fillToken != null || action.literalValue != null;
+    if (!hasVal) return `${action.action} needs piiCategory, fillToken or literalValue`;
   }
   return null; // ok
 }
@@ -50,7 +50,13 @@ export async function requestStep(serverUrl, payload, opts = {}) {
       body: JSON.stringify(payload),
       signal: ctl.signal,
     });
-    if (!res.ok) throw new Error(`server ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      const errText = (await res.text()).slice(0, 200);
+      const err = new Error(`HTTP ${res.status}: ${errText}`);
+      err.isServerError = true;
+      err.status = res.status;
+      throw err;
+    }
     const data = await res.json();
     return {
       actions: data.actions || [],
@@ -59,6 +65,16 @@ export async function requestStep(serverUrl, payload, opts = {}) {
       serverLatencyMs: data.latency_ms ?? null,
       roundTripMs: performance.now() - started,
     };
+  } catch (err) {
+    if (err.name === "AbortError") {
+      const timeoutErr = new Error(`Server request timed out after ${timeoutMs}ms`);
+      timeoutErr.isTimeout = true;
+      throw timeoutErr;
+    }
+    if (!err.isServerError) {
+      err.isNetworkError = true;
+    }
+    throw err;
   } finally {
     clearTimeout(t);
   }
