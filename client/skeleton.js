@@ -82,9 +82,11 @@
       if (!vis && !includeHidden) return;
       const tag = el.tagName.toLowerCase();
       const piiCategory = detectPiiCategory(el);
-      const isCensored = piiCategory ? CENSORED_CATEGORIES.has(piiCategory) || SENSITIVE_PATTERNS.test(piiCategory) : false;
+      // Only high-risk secrets (CENSORED_CATEGORIES / RESTRICTED_PII_CATEGORIES) are marked isCensored.
+      // Profile fields (name, email, address, phone) have isCensored: false so they can be targetable skeleton nodes.
+      const isCensored = piiCategory ? CENSORED_CATEGORIES.has(piiCategory) : false;
 
-      // Mark the DOM element as redacted if censored
+      // Mark the DOM element as redacted if censored (restricted secret)
       if (isCensored) {
         el.setAttribute("data-pl-redacted", "1");
       }

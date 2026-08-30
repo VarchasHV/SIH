@@ -11,6 +11,18 @@
 
   const RESTRICTED_PII_CATEGORIES = window.__PL.RESTRICTED_PII_CATEGORIES || window.__PL.CENSORED_CATEGORIES;
 
+  function resolveProfileValue(profile = {}, category = "") {
+    if (!category || !profile) return null;
+    if (profile[category]) return profile[category];
+    const normCat = String(category).toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (const k of Object.keys(profile)) {
+      if (String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normCat) {
+        return profile[k];
+      }
+    }
+    return null;
+  }
+
   async function prepare() {
     const { profile = {} } = await chrome.storage.local.get("profile");
 
@@ -24,7 +36,7 @@
       if (node.piiCategory && RESTRICTED_PII_CATEGORIES.has(node.piiCategory)) {
         node.isCensored = true;
         node.hasFill = false;
-      } else if (node.piiCategory && profile[node.piiCategory]) {
+      } else if (node.piiCategory && resolveProfileValue(profile, node.piiCategory)) {
         node.isCensored = false;
         node.hasFill = true;
       } else {
@@ -44,9 +56,10 @@
 
     // Resolve profile value LOCALLY from chrome.storage.local
     let value = null;
-    if (action.piiCategory && profile[action.piiCategory]) {
-      value = profile[action.piiCategory];
-    } else if (action.literalValue != null) {
+    if (action.piiCategory) {
+      value = resolveProfileValue(profile, action.piiCategory);
+    }
+    if (value == null && action.literalValue != null) {
       value = action.literalValue;
     }
 
