@@ -11,12 +11,19 @@
     "test": "node --test \"tests/**/*.test.mjs\"",
     "eval": "node eval/run_eval.mjs",
     "bench": "node eval/bench/gen-corpus.mjs --seed 20260830 && node eval/bench/run.mjs",
+<<<<<<< HEAD
     "bench:fast": ".venv/bin/python3 benchmarks/run_bench.py --n 2000",
     "bench:full": ".venv/bin/python3 benchmarks/run_bench.py --n 20000",
     "bench:live": ".venv/bin/python3 benchmarks/run_bench.py --n 5000 --live-vlm",
     "bench:json": ".venv/bin/python3 benchmarks/run_bench.py --n 5000 --json",
     "server": "python3 -m uvicorn main:app --app-dir server --reload --port 8000",
     "server:install": "python3 -m pip install -r server/requirements.txt"
+=======
+    "eval:agent": "node eval/agent-eval.mjs",
+    "server:setup": "python3 -m venv server/.venv && server/.venv/bin/pip install -r server/requirements.txt",
+    "server": "server/.venv/bin/python -m uvicorn main:app --app-dir server --reload --reload-dir server --port 8000",
+    "server:install": "server/.venv/bin/pip install -r server/requirements.txt"
+>>>>>>> 3348bf4 (feat(eval): Metric-1 harness — agent action-correctness over the real /agent/step loop)
   },
   "devDependencies": {}
 }
