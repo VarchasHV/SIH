@@ -14,9 +14,32 @@ const VENDOR = join(ROOT, "client", "vendor");
 
 const FILES = [
   {
-    // Transformers.js (ESM) - object detection + optional OCR/NER, WebGPU/WASM.
+    // Transformers.js (ESM) - runs the client-side Vision Transformer.
     url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/transformers.min.js",
     out: "transformers.min.js",
+  },
+  {
+    // ONNX Runtime Web JSEP build - one binary serving BOTH the WebGPU and the
+    // WASM(SIMD) execution providers. Vendored so MV3 never fetches remote code.
+    url: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2/dist/ort-wasm-simd-threaded.jsep.wasm",
+    out: "ort-wasm-simd-threaded.jsep.wasm",
+  },
+  {
+    // YOLOS-tiny: a genuine Vision Transformer (ViT/DETR-family) object detector.
+    // int8-quantized, ~9.7 MB. Reads the screenshot; `person` detections feed the
+    // redaction pipeline alongside the DOM + OCR channels.
+    url: "https://huggingface.co/Xenova/yolos-tiny/resolve/main/config.json",
+    out: "models/Xenova/yolos-tiny/config.json",
+  },
+  {
+    url: "https://huggingface.co/Xenova/yolos-tiny/resolve/main/preprocessor_config.json",
+    out: "models/Xenova/yolos-tiny/preprocessor_config.json",
+  },
+  {
+    // saved as model_q8.onnx: Transformers.js v3 resolves dtype "q8" to that
+    // filename, while the HF repo still publishes the v2 name.
+    url: "https://huggingface.co/Xenova/yolos-tiny/resolve/main/onnx/model_quantized.onnx",
+    out: "models/Xenova/yolos-tiny/onnx/model_q8.onnx",
   },
   {
     // Tesseract.js main thread API (UMD).

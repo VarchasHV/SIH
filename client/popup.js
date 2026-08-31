@@ -82,10 +82,18 @@ function showEgress(evt) {
   $("#egress-img").src = evt.redactedImage;
   const s = evt.visionStats || {};
   const t = evt.timings || {};
+  const v = s.vit || {};
+  const vitLine = v.available
+    ? `ViT ${v.modelId || "yolos-tiny"} on ${String(v.backend || "?").toUpperCase()}` +
+      `${v.gpu?.available && v.gpu.vendor ? ` (${v.gpu.vendor}${v.gpu.architecture ? " " + v.gpu.architecture : ""})` : ""}` +
+      ` · ${t.vitMs ?? "?"}ms${v.loadMs != null ? ` (load ${v.loadMs}ms)` : ""}` +
+      ` · saw ${v.objects ?? 0} object(s)${v.labels?.length ? ": " + v.labels.slice(0, 6).join(", ") : ""}`
+    : `ViT unavailable${v.error ? ` — ${v.error}` : ""}`;
   $("#egress-stats").textContent =
-    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
+    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · ViT ${t.vitMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
     `regions blacked out: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
-    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}`;
+    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}\n` +
+    vitLine;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
 }
 
