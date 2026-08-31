@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Privacy Lens — in-browser eval</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; max-width: 900px; margin: 32px auto; padding: 0 16px; color: #1c1c1c; }
+  h1 { font-size: 20px; } h2 { font-size: 15px; margin-top: 28px; }
+  table { border-collapse: collapse; width: 100%; margin: 8px 0 16px; }
+  th, td { border: 1px solid #ddd; padding: 6px 9px; text-align: right; font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  .good { color: #1a7f37; } .bad { color: #cf222e; }
+  iframe { position: absolute; width: 1280px; height: 900px; left: -9999px; visibility: hidden; }
+  button { padding: 9px 16px; font: 600 14px inherit; border: 1px solid #1c1c1c; background: #1c1c1c; color: #fff; border-radius: 6px; cursor: pointer; }
+  pre { background: #f6f6f6; padding: 10px; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Privacy Lens — in-browser eval</h1>
+<p>Serve the repo root (<code>node scripts/serve.mjs . 4173</code>) and open
+<code>http://localhost:4173/eval/eval.html</code>. Measures the metrics that need a
+real DOM + timing. End-to-end latency (metric 5) and vision resource use
+(metric 4, full) come from the extension's Activity panel during a live run.</p>
+<button id="run">Run eval</button>
+<div id="out"></div>
+
+<script type="module">
+import { classifySignals } from "/client/lib/field-classifier.mjs";
+
+const FIXTURES = ["job-application.html", "checkout.html", "kyc.html", "hostile-form.html"];
+const isPII = (c) => c && c !== "safe";
+const pct = (n) => (n * 100).toFixed(1) + "%";
+
+function captionText(node) {
+  if (!node) return "";
+  const t = (node.textContent || "").replace(/\s+/g, " ").trim();
+  return t && t.length <= 60 && /[a-z]/i.test(t) ? t : "";
+}
+function spatialLabel(el) {
+  const cell = el.closest("td, th");
+  if (cell && captionText(cell.previousElementSibling)) return captionText(cell.previousElementSibling);
+  let cur = el;
+  for (let d = 0; d < 4 && cur; d++, cur = cur.parentElement) {
+    const sib = cur.previousElementSibling;
+    if (sib && !sib.querySelector("input,select,textarea") && captionText(sib)) return captionText(sib);
+  }
+  const g = el.closest('[class*="form-group"],[class*="field"],[class*="row"],[class*="col"],dd');
+  if (g) {
+    const l = g.querySelector("label,legend");
+    if (captionText(l)) return captionText(l);
+    if (captionText(g.previousElementSibling)) return captionText(g.previousElementSibling);
+  }
+  return "";
+}
+function signalsFor(el, doc) {
+  const id = el.getAttribute("id") || "";
+  let labelText = "";
+  if (id) labelText = doc.querySelector(`label[for="${CSS.escape(id)}"]`)?.textContent || "";
+  if (!labelText) labelText = el.closest("label")?.textContent || "";
+  if (!labelText) labelText = spatialLabel(el);
+  return {
+    tagName: el.tagName, type: el.getAttribute("type") || "", name: el.getAttribute("name") || "",
+    id, autocomplete: el.getAttribute("autocomplete") || "", placeholder: el.getAttribute("placeholder") || "",
+    ariaLabel: el.getAttribute("aria-label") || "", labelText,
+    nearbyText: el.parentElement?.textContent || "",
+  };
+}
+
+function loadFixture(name) {
+  return new Promise((resolve) => {
+    const f = document.createElement("iframe");
+    f.src = "/fixtures/" + name;
+    f.onload = () => resolve(f);
+    document.body.appendChild(f);
+  });
+}
+
+async function run() {
+  const out = document.getElementById("out");
+  out.innerHTML = "<p>running…</p>";
+  const mem0 = performance.memory?.usedJSHeapSize;
+  let TP = 0, FP = 0, FN = 0, catOK = 0, catN = 0;
+  let structSeen = 0, structTotal = 0;
+  const rows = [];
+  let totalMs = 0;
+
+  for (const name of FIXTURES) {
+    const f = await loadFixture(name);
+    const doc = f.contentDocument;
+    const fields = [...doc.querySelectorAll("input, select, textarea")];
+    const t0 = performance.now();
+    let tp = 0, fp = 0, fn = 0;
+    for (const el of fields) {
+      const gt = el.getAttribute("data-gt") || "";
+      const pred = classifySignals(signalsFor(el, doc));
+      const p = isPII(pred?.category), g = isPII(gt);
+      if (p && g) { tp++; catN++; if (pred.category === gt) catOK++; }
+      else if (p && !g) fp++;
+      else if (!p && g) fn++;
+    }
+    const ms = performance.now() - t0;
+    totalMs += ms;
+    // structure recall: interactables the walker captured vs present
+    const interactables = doc.querySelectorAll("input,select,textarea,button,a[href],[role=button]").length;
+    structSeen += fields.length + doc.querySelectorAll("button,a[href]").length;
+    structTotal += interactables;
+    TP += tp; FP += fp; FN += fn;
+    rows.push(`<tr><td>${name}</td><td>${fields.length}</td><td>${tp}</td><td>${fp}</td><td>${fn}</td><td>${ms.toFixed(1)}ms</td></tr>`);
+    f.remove();
+  }
+
+  const P = TP / (TP + FP || 1), R = TP / (TP + FN || 1), F1 = 2 * P * R / (P + R || 1);
+  const memMB = performance.memory ? ((performance.memory.usedJSHeapSize - mem0) / 1048576).toFixed(1) + " MB" : "n/a";
+
+  out.innerHTML = `
+    <h2>Metric 2 — PII field detection</h2>
+    <table><tr><th>fixture</th><th>fields</th><th>TP</th><th>FP</th><th>FN</th><th>classify time</th></tr>${rows.join("")}
+    <tr><td><b>overall</b></td><td></td><td>${TP}</td><td>${FP}</td><td>${FN}</td><td>${totalMs.toFixed(1)}ms</td></tr></table>
+    <p>precision <b>${pct(P)}</b> · recall <b>${pct(R)}</b> · F1 <b>${pct(F1)}</b> · category accuracy <b>${pct(catOK / (catN || 1))}</b></p>
+
+    <h2>Metric 1 — visual-context (structure) recall</h2>
+    <p>elements captured / interactables present: <b>${structSeen}/${structTotal}</b> = ${pct(structSeen / structTotal)}
+    <br><span style="color:#888">(the extension additionally fuses OCR + the screenshot; this is the DOM-skeleton lower bound)</span></p>
+
+    <h2>Metric 4 — client resources (this harness)</h2>
+    <p>JS heap delta: <b>${memMB}</b> · classifier cost: <b>${(totalMs / FIXTURES.length).toFixed(1)} ms/page</b>
+    <br><span style="color:#888">OCR/face-model memory + WebGPU use are reported per-step in the extension Activity panel.</span></p>
+
+    <h2>Metrics 3 &amp; 5</h2>
+    <p>Pixel-level redaction IoU and end-to-end latency are produced by the extension during a live run
+    (Activity panel → per-step timings: OCR / faces / redact / network / total).</p>`;
+}
+document.getElementById("run").addEventListener("click", run);
+</script>
+</body>
+</html>

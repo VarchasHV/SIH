@@ -1,0 +1,25 @@
+# OS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+server/.env
+
+# Vendored ML libraries (fetch with: npm run fetch:vendor)
+client/vendor/*
+!client/vendor/README.md
+
+# Eval output
+eval/out/
+
+# Misc
+*.local
+
+.env

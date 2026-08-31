@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>e-KYC Verification · GovPortal</title>
+<link rel="stylesheet" href="_form.css" />
+</head>
+<body>
+<form class="card" id="kyc" onsubmit="event.preventDefault(); document.getElementById('ok').hidden=false;">
+  <h1>e-KYC Verification</h1>
+  <p class="note">All identity documents are verified against national databases.</p>
+
+  <h2>Identity</h2>
+  <label>Full name (as on Aadhaar) *<input name="applicant_name" autocomplete="name" required data-gt="full name" /></label>
+  <div class="row">
+    <label>Date of birth *<input type="date" name="dob" required data-gt="date of birth" /></label>
+    <label>Gender
+      <select name="gender" data-gt="safe"><option value="">—</option><option>Female</option><option>Male</option><option>Other</option></select>
+    </label>
+  </div>
+  <label>Aadhaar number *<input name="aadhaar" inputmode="numeric" maxlength="14" placeholder="XXXX XXXX XXXX" required data-gt="Aadhaar" /></label>
+  <label>PAN *<input name="pan" maxlength="10" style="text-transform:uppercase" required data-gt="PAN" /></label>
+  <label>Passport number<input name="passport_number" data-gt="passport number" /></label>
+  <label>Voter ID (EPIC)<input name="epic_no" data-gt="government ID" /></label>
+
+  <h2>Contact</h2>
+  <div class="row">
+    <label>Mobile *<input type="tel" name="mobile" autocomplete="tel" required data-gt="phone number" /></label>
+    <label>Email *<input type="email" name="email" autocomplete="email" required data-gt="email" /></label>
+  </div>
+  <label>Residential address *<textarea name="residence_address" rows="2" autocomplete="street-address" required data-gt="address"></textarea></label>
+  <div class="row">
+    <label>PIN code *<input name="pincode" inputmode="numeric" required data-gt="postal/ZIP code" /></label>
+    <label>State
+      <select name="state" data-gt="safe"><option value="">—</option><option>Karnataka</option><option>Maharashtra</option><option>Delhi</option></select>
+    </label>
+  </div>
+
+  <h2>Bank (for DBT)</h2>
+  <label>Bank account number<input name="bank_account" inputmode="numeric" data-gt="bank account information" /></label>
+  <label>IFSC<input name="ifsc" maxlength="11" style="text-transform:uppercase" data-gt="bank account information" /></label>
+
+  <label><input type="checkbox" name="consent" data-gt="safe" /> I consent to Aadhaar-based e-KYC.</label>
+
+  <button type="submit" data-gt="safe">Verify &amp; Continue</button>
+  <p class="done" id="ok" hidden>✓ Submitted for verification.</p>
+</form>
+</body>
+</html>

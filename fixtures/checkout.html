@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Checkout · ShopFast</title>
+<link rel="stylesheet" href="_form.css" />
+</head>
+<body>
+<form class="card" id="checkout" onsubmit="event.preventDefault(); document.getElementById('ok').hidden=false;">
+  <h1>Checkout</h1>
+  <p class="note">Order #SF-40912 · Total ₹4,299</p>
+
+  <h2>Shipping address</h2>
+  <div class="row">
+    <label>Full name *<input name="ship_name" autocomplete="name" required data-gt="full name" /></label>
+    <label>Phone *<input type="tel" name="ship_phone" autocomplete="tel" required data-gt="phone number" /></label>
+  </div>
+  <label>Address line *<input name="address1" autocomplete="address-line1" required data-gt="address" /></label>
+  <div class="row">
+    <label>City<input name="city" autocomplete="address-level2" data-gt="safe" /></label>
+    <label>PIN code *<input name="postal_code" autocomplete="postal-code" required data-gt="postal/ZIP code" /></label>
+  </div>
+
+  <h2>Payment</h2>
+  <label>Card number *<input name="cc-number" autocomplete="cc-number" inputmode="numeric" required data-gt="credit/debit card number" /></label>
+  <div class="row">
+    <label>Expiry *<input name="cc-exp" autocomplete="cc-exp" placeholder="MM/YY" required data-gt="card expiry" /></label>
+    <label>CVV *<input name="security_code" autocomplete="cc-csc" inputmode="numeric" required data-gt="CVV/security code" /></label>
+  </div>
+  <label>Email for receipt *<input type="email" name="email" autocomplete="email" required data-gt="email" /></label>
+  <label>Gift note (optional)<textarea name="gift_note" rows="2" data-gt="safe"></textarea></label>
+
+  <button type="submit" data-gt="safe">Pay ₹4,299</button>
+  <p class="done" id="ok" hidden>✓ Payment complete.</p>
+</form>
+</body>
+</html>

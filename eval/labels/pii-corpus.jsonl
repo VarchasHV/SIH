@@ -1,0 +1,20 @@
+{"text": "My Aadhaar is 2345 6789 0124 and it is valid", "categories": ["aadhaar"]}
+{"text": "PAN: ABCPS1234K issued 2019", "categories": ["pan"]}
+{"text": "Reach me at aditi.sharma@example.com any time", "categories": ["email"]}
+{"text": "Call +91 9876543210 today", "categories": ["phone-in"]}
+{"text": "Card 4111 1111 1111 1111 expires soon", "categories": ["credit-card"]}
+{"text": "IFSC HDFC0001234 for the transfer", "categories": ["ifsc"]}
+{"text": "pay to aditi@okhdfcbank now", "categories": ["upi-vpa"]}
+{"text": "GST 29ABCTY5544K1ZP registered", "categories": ["gstin"]}
+{"text": "SSN 123-45-6789 on file", "categories": ["ssn"]}
+{"text": "server at 192.168.1.42 responded", "categories": ["ipv4"]}
+{"text": "born 14/03/1998 in Pune", "categories": ["dob"]}
+{"text": "Just a normal sentence with no identifiers at all.", "categories": []}
+{"text": "Order SF-40912 total 4299 rupees shipped today", "categories": []}
+{"text": "The meeting is at 3pm on level 12", "categories": []}
+{"text": "invoice number 2024000123 approved", "categories": []}
+{"text": "Passport P1234567 expires 2030", "categories": ["passport-in"]}
+{"text": "EPIC ABC1234567 for voter roll", "categories": ["voter-id"]}
+{"text": "Vehicle KA01AB1234 parked at gate 3", "categories": ["vehicle-reg"]}
+{"text": "contact rahul@example.org and aadhaar 3456 7890 1238", "categories": ["email", "aadhaar"]}
+{"text": "random 12 digit 234567890123 is not an aadhaar", "categories": []}

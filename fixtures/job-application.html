@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Apply — Senior Analyst · Acme Corp</title>
+<link rel="stylesheet" href="_form.css" />
+</head>
+<body>
+<form class="card" id="application" onsubmit="event.preventDefault(); document.getElementById('ok').hidden=false;">
+  <h1>Senior Analyst — Application</h1>
+  <p class="note">Fields marked * are required.</p>
+
+  <!-- OCR-only PII: a pre-filled banner, not a form field -->
+  <p class="note" id="session-banner">Signed in as former.user@oldmail.com · session 2a9f</p>
+
+  <div class="avatar">
+    <img id="avatar" src="avatar.jpg" alt="profile photo" data-gt="face" />
+    <span class="note">Your profile photo will be shared with the hiring team.</span>
+  </div>
+
+  <h2>Personal details</h2>
+  <div class="row">
+    <label>First name *<input name="first_name" autocomplete="given-name" required data-gt="first name" /></label>
+    <label>Last name *<input name="last_name" autocomplete="family-name" required data-gt="last name" /></label>
+  </div>
+  <div class="row">
+    <label>Email *<input type="email" name="email" autocomplete="email" required data-gt="email" /></label>
+    <label>Phone *<input type="tel" name="phone" autocomplete="tel" required data-gt="phone number" /></label>
+  </div>
+  <label>Date of birth<input type="text" name="dob" placeholder="DD/MM/YYYY" data-gt="date of birth" /></label>
+  <label>Current address<textarea name="address" rows="2" autocomplete="street-address" data-gt="address"></textarea></label>
+  <div class="row">
+    <label>PIN code<input name="pincode" inputmode="numeric" data-gt="postal/ZIP code" /></label>
+    <label>Country
+      <select name="country" data-gt="safe">
+        <option value="">Select…</option>
+        <option>India</option><option>United States</option><option>Germany</option>
+      </select>
+    </label>
+  </div>
+
+  <h2>Eligibility</h2>
+  <label>PAN (for payroll)<input name="pan_number" data-gt="PAN" /></label>
+  <label>Years of experience<input name="yoe" type="number" min="0" data-gt="safe" /></label>
+  <label>LinkedIn URL<input name="linkedin" type="url" placeholder="https://" data-gt="safe" /></label>
+  <label>Why do you want this role?<textarea name="cover_note" rows="3" data-gt="safe"></textarea></label>
+
+  <label><input type="checkbox" name="agree" data-gt="safe" /> I certify the information is accurate.</label>
+
+  <button type="submit" data-gt="safe">Submit application</button>
+  <p class="done" id="ok" hidden>✓ Application submitted.</p>
+</form>
+</body>
+</html>

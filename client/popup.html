@@ -1,44 +1,85 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Privacy Lens</title>
-  <link rel="stylesheet" href="popup.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Lens — Vision Agent</title>
+  <link rel="stylesheet" href="popup.css" />
 </head>
 <body>
-  <main class="shell">
-    <header class="masthead">
-      <div class="mark" aria-hidden="true">PL</div>
-      <div>
-        <p class="kicker">LOCAL INSPECTION</p>
-        <h1>Privacy Lens</h1>
+<main class="shell">
+  <header class="masthead">
+    <div class="mark" aria-hidden="true">PL</div>
+    <div>
+      <p class="kicker">ON-DEVICE VISION AGENT</p>
+      <h1>Privacy Lens</h1>
+    </div>
+    <span class="status-dot" id="status-dot" title="Ready"></span>
+  </header>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab is-active" data-tab="assist">Assist</button>
+    <button class="tab" data-tab="profile">Profile</button>
+    <button class="tab" data-tab="activity">Activity</button>
+  </nav>
+
+  <!-- ASSIST ------------------------------------------------------------ -->
+  <section class="panel is-active" id="tab-assist">
+    <label class="field">
+      <span>Task for the agent</span>
+      <textarea id="goal" rows="2" placeholder="e.g. Fill in this job application using my profile, but stop before submitting."></textarea>
+    </label>
+    <div class="preset-row" id="presets"></div>
+
+    <details class="advanced">
+      <summary>Settings</summary>
+      <label class="field"><span>Server URL</span><input id="serverUrl" type="text" value="http://localhost:8000" /></label>
+      <label class="field"><span>Redaction</span>
+        <select id="redactionMode">
+          <option value="blackout" selected>Blackout (Solid Boxes)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="confirmEachSend" /> Approve every server call</label>
+      <label class="check"><input type="checkbox" id="confirmBeforeSubmit" checked /> Confirm before submit</label>
+    </details>
+
+    <button class="scan-button" id="run-button" type="button"><span class="button-icon">▶</span> Start agent</button>
+    <button class="ghost-button" id="cancel-button" type="button" hidden>Stop</button>
+
+    <div class="gate" id="gate" hidden>
+      <p id="gate-text"></p>
+      <div class="gate-actions">
+        <button id="gate-approve" class="mini approve">Approve</button>
+        <button id="gate-deny" class="mini deny">Skip</button>
       </div>
-      <span class="status-dot" title="Ready"></span>
-    </header>
+    </div>
 
-    <section class="summary" aria-live="polite">
-      <p class="summary-label">Sensitive fields found</p>
-      <p class="count" id="count">—</p>
-      <p class="summary-note" id="summary-note">Scanning the current page</p>
-    </section>
+    <hr />
+    <button class="ghost-button" id="scan-button" type="button">Quick scan — detector only</button>
+    <ol id="box-list" class="box-list"><li class="empty">No scan yet.</li></ol>
+  </section>
 
-    <section class="results" aria-label="Scan results">
-      <div class="results-heading">
-        <h2>DOM bounding boxes</h2>
-        <span id="coordinate-space">device px</span>
-      </div>
-      <ol id="box-list" class="box-list">
-        <li class="empty">No scan yet.</li>
-      </ol>
-    </section>
+  <!-- PROFILE (Only non-sensitive fields; all censored/sensitive fields removed) -->
+  <section class="panel" id="tab-profile">
+    <p class="hint">Stored only locally. All sensitive/censored fields (Aadhaar, PAN, Card, CVV, Passwords, Bank Info, Govt ID) have been removed and are strictly blocked from being filled.</p>
+    <div id="profile-fields"></div>
+    <button class="scan-button" id="save-profile" type="button">Save profile</button>
+    <p class="saved-note" id="saved-note" aria-live="polite"></p>
+  </section>
 
-    <button class="scan-button" id="scan-button" type="button">
-      <span class="button-icon" aria-hidden="true">+</span>
-      Scan current page
-    </button>
-    <p class="privacy-note">Values stay in the page. Only element geometry is returned.</p>
-  </main>
-  <script src="popup.js"></script>
+  <!-- ACTIVITY ------------------------------------------------------- -->
+  <section class="panel" id="tab-activity">
+    <div class="egress" id="egress" hidden>
+      <p class="egress-label">Leaving this device this step</p>
+      <img id="egress-img" alt="redacted screenshot" />
+      <div class="egress-stats" id="egress-stats"></div>
+      <details><summary>Payload JSON</summary><pre id="egress-json"></pre></details>
+    </div>
+    <ol class="log" id="log"><li class="empty">Idle.</li></ol>
+  </section>
+
+  <p class="privacy-note">All sensitive items are censored with solid black boxes. Censored fields are never filled by the agent.</p>
+</main>
+<script src="popup.js"></script>
 </body>
 </html>

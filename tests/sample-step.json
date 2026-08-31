@@ -1,0 +1,34 @@
+{
+  "taskGoal": "Fill the KYC form (Aadhaar, PAN, address). Do not submit.",
+  "step": 1,
+  "skeleton": {
+    "url": "http://localhost:4173/kyc.html",
+    "title": "e-KYC Verification",
+    "viewport": { "w": 1280, "h": 800, "dpr": 2 },
+    "scroll": { "x": 0, "y": 0 },
+    "nodes": [
+      { "id": "el-1", "tag": "input", "type": "text", "label": "Full name (as on Aadhaar)", "name": "applicant_name", "required": true, "state": "empty", "piiCategory": "full name", "visible": true, "bbox": {"x":40,"y":120,"w":540,"h":38}, "fillToken": "[NAME_1]" },
+      { "id": "el-2", "tag": "input", "type": "date", "label": "Date of birth", "name": "dob", "required": true, "state": "empty", "piiCategory": "date of birth", "visible": true, "bbox": {"x":40,"y":180,"w":260,"h":38}, "fillToken": "[DOB_1]" },
+      { "id": "el-3", "tag": "select", "label": "Gender", "name": "gender", "required": false, "state": "empty", "piiCategory": null, "visible": true, "bbox": {"x":320,"y":180,"w":260,"h":38}, "options": [{"value":"","label":"—"},{"value":"Female","label":"Female"},{"value":"Male","label":"Male"}] },
+      { "id": "el-4", "tag": "input", "type": "text", "label": "Aadhaar number", "name": "aadhaar", "required": true, "state": "empty", "piiCategory": "Aadhaar", "visible": true, "bbox": {"x":40,"y":240,"w":540,"h":38}, "fillToken": "[AADHAAR_1]" },
+      { "id": "el-5", "tag": "input", "type": "text", "label": "PAN", "name": "pan", "required": true, "state": "empty", "piiCategory": "PAN", "visible": true, "bbox": {"x":40,"y":300,"w":540,"h":38}, "fillToken": "[PAN_1]" },
+      { "id": "el-6", "tag": "input", "type": "email", "label": "Email", "name": "email", "required": true, "state": "empty", "piiCategory": "email", "visible": true, "bbox": {"x":40,"y":360,"w":540,"h":38}, "fillToken": "[EMAIL_1]" },
+      { "id": "el-7", "tag": "textarea", "label": "Residential address", "name": "residence_address", "required": true, "state": "empty", "piiCategory": "address", "visible": true, "bbox": {"x":40,"y":420,"w":540,"h":60}, "fillToken": "[ADDRESS_1]" },
+      { "id": "el-8", "tag": "input", "type": "checkbox", "label": "I consent to Aadhaar-based e-KYC.", "name": "consent", "required": false, "state": "empty", "piiCategory": null, "visible": true, "bbox": {"x":40,"y":500,"w":20,"h":20} },
+      { "id": "el-9", "tag": "button", "label": "", "text": "Verify & Continue", "isSubmit": true, "state": "n/a", "visible": true, "bbox": {"x":40,"y":540,"w":180,"h":42} }
+    ]
+  },
+  "tokenMap": {
+    "[NAME_1]": "full name", "[DOB_1]": "date of birth", "[AADHAAR_1]": "Aadhaar",
+    "[PAN_1]": "PAN", "[EMAIL_1]": "email", "[ADDRESS_1]": "address"
+  },
+  "availableTokens": {
+    "full name": "[NAME_1]", "date of birth": "[DOB_1]", "Aadhaar": "[AADHAAR_1]",
+    "PAN": "[PAN_1]", "email": "[EMAIL_1]", "address": "[ADDRESS_1]"
+  },
+  "visionDetections": [
+    { "category": "face", "confidence": 0.98, "sources": ["face"], "bbox": {"x":80,"y":60,"w":112,"h":112} }
+  ],
+  "screenshot": null,
+  "history": []
+}

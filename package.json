@@ -1,0 +1,18 @@
+{
+  "name": "privacy-lens-vision-agent",
+  "version": "0.2.0",
+  "private": true,
+  "description": "SIH26171 - Privacy-preserving on-device vision agent for browser form-filling",
+  "type": "module",
+  "scripts": {
+    "fetch:vendor": "node scripts/fetch-vendor.mjs",
+    "fixtures": "node scripts/serve.mjs fixtures 4173",
+    "serve": "node scripts/serve.mjs . 4173",
+    "test": "node --test \"tests/**/*.test.mjs\"",
+    "eval": "node eval/run_eval.mjs",
+    "bench": "node eval/bench/gen-corpus.mjs --seed 20260830 && node eval/bench/run.mjs",
+    "server": "python3 -m uvicorn main:app --app-dir server --reload --port 8000",
+    "server:install": "python3 -m pip install -r server/requirements.txt"
+  },
+  "devDependencies": {}
+}

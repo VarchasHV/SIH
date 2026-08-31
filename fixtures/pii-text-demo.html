@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Privacy Lens · Static DOM Redaction & Synthetic Filling Demo</title>
+<link rel="stylesheet" href="_form.css" />
+<style>
+  .card { max-width: 680px; margin: 2rem auto; }
+  .demo-section { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  .demo-section h3 { margin-top: 0; color: #1e293b; font-size: 1.1rem; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; background: #e0e7ff; color: #3730a3; margin-right: 6px; }
+  .injected-box { margin-top: 10px; padding: 10px; background: #ecfdf5; border: 1px dashed #10b981; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Privacy Lens — DOM Automation &amp; Privacy</h1>
+  <p class="note">Demonstrates static text redaction (TreeWalker), dynamic SPA support (MutationObserver), &amp; synthetic token injection.</p>
+
+  <!-- Objective 1: Static Text DOM Redaction -->
+  <div class="demo-section" id="static-pii-section">
+    <h3><span class="badge">Objective 1</span> Static Text Nodes (Pre-Rendered)</h3>
+    <p><strong>Aadhaar:</strong> My registered UID is 2345 6789 0124 for authentication.</p>
+    <p><strong>PAN:</strong> Tax identifier registered with ITD is ABCDE1234F.</p>
+    <p><strong>Phone:</strong> Reach me at +91 9876543210 or 9123456789 during office hours.</p>
+    <p><strong>SSN:</strong> Social security number on file is 123-45-6789.</p>
+    <p><strong>Credit Card:</strong> Billed to card 4111 1111 1111 1111 with Luhn validity.</p>
+    <p><strong>Email:</strong> Notifications sent to john.doe@example.com.</p>
+  </div>
+
+  <!-- Objective 1 (SPA): Dynamic DOM Injection -->
+  <div class="demo-section" id="dynamic-spa-section">
+    <h3><span class="badge">SPA Support</span> Dynamic React/Vue Simulation</h3>
+    <p>Click below to simulate a single-page app injecting PII asynchronously into the DOM:</p>
+    <button type="button" id="btn-inject-spa" style="background:#4f46e5;color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">
+      ⚡ Inject Dynamic PII (SPA Trigger)
+    </button>
+    <div id="spa-container"></div>
+  </div>
+
+  <!-- Objective 2 & 3: Form with Synthetic Tokens & Dropdowns -->
+  <div class="demo-section">
+    <h3><span class="badge">Objectives 2 &amp; 3</span> Synthetic Form Injection &amp; Dropdown Handling</h3>
+    <form id="demo-form" onsubmit="event.preventDefault(); alert('Form submitted successfully with zero raw PII!');">
+      <label>Full Name *
+        <input name="first_name" data-pl-pii="first_name" placeholder="First Name" />
+      </label>
+      <label>Email *
+        <input type="email" name="email" data-pl-pii="email" placeholder="email@example.com" />
+      </label>
+      <label>Phone *
+        <input type="tel" name="phone" data-pl-pii="phone" placeholder="10-digit number" />
+      </label>
+      <label>Aadhaar *
+        <input name="aadhaar" data-pl-pii="aadhaar" placeholder="XXXX XXXX XXXX" />
+      </label>
+      <label>State / Region (Dropdown)
+        <select id="state-select" name="state">
+          <option value="">-- Select an option --</option>
+          <option value="KA">Karnataka</option>
+          <option value="MH">Maharashtra</option>
+          <option value="DL">Delhi</option>
+          <option value="TN">Tamil Nadu</option>
+        </select>
+      </label>
+      <button type="submit" style="margin-top:12px;">Submit Application</button>
+    </form>
+  </div>
+</div>
+
+<script>
+  // Simulate SPA injection
+  document.getElementById('btn-inject-spa').addEventListener('click', () => {
+    const container = document.getElementById('spa-container');
+    const div = document.createElement('div');
+    div.className = 'injected-box';
+    div.innerHTML = '<p><strong>[Dynamically Injected]</strong> Customer KYC Aadhaar 2345 6789 0124 and PAN ABCDE1234F loaded via AJAX.</p>';
+    container.appendChild(div);
+  });
+</script>
+</body>
+</html>
