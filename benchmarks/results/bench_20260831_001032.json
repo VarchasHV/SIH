@@ -1,0 +1,222 @@
+{
+  "meta": {
+    "timestamp": "2026-08-30T18:40:32.275083+00:00",
+    "corpus_size": 5000,
+    "node_version": "v24.19.0"
+  },
+  "corpus": {
+    "total_samples": 5000,
+    "positive_samples": 3000,
+    "negative_samples": 2000,
+    "categories": [
+      "aadhaar",
+      "pan",
+      "credit-card",
+      "ssn",
+      "email",
+      "phone-in",
+      "ifsc",
+      "upi-vpa",
+      "dob",
+      "passport-in",
+      "voter-id",
+      "vehicle-reg"
+    ]
+  },
+  "tier1_detection": {
+    "overall": {
+      "tp": 2208,
+      "fp": 8,
+      "fn": 792,
+      "precision": 0.9964,
+      "recall": 0.736,
+      "f1": 0.8466
+    },
+    "per_category": {
+      "aadhaar": {
+        "tp": 27,
+        "fp": 8,
+        "fn": 223,
+        "precision": 0.7714,
+        "recall": 0.108,
+        "f1": 0.1895
+      },
+      "pan": {
+        "tp": 107,
+        "fp": 0,
+        "fn": 143,
+        "precision": 1.0,
+        "recall": 0.428,
+        "f1": 0.5994
+      },
+      "credit-card": {
+        "tp": 27,
+        "fp": 0,
+        "fn": 223,
+        "precision": 1.0,
+        "recall": 0.108,
+        "f1": 0.1949
+      },
+      "ssn": {
+        "tp": 248,
+        "fp": 0,
+        "fn": 2,
+        "precision": 1.0,
+        "recall": 0.992,
+        "f1": 0.996
+      },
+      "email": {
+        "tp": 250,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "phone-in": {
+        "tp": 227,
+        "fp": 0,
+        "fn": 23,
+        "precision": 1.0,
+        "recall": 0.908,
+        "f1": 0.9518
+      },
+      "ifsc": {
+        "tp": 250,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "upi-vpa": {
+        "tp": 250,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "dob": {
+        "tp": 155,
+        "fp": 0,
+        "fn": 95,
+        "precision": 1.0,
+        "recall": 0.62,
+        "f1": 0.7654
+      },
+      "passport-in": {
+        "tp": 167,
+        "fp": 0,
+        "fn": 83,
+        "precision": 1.0,
+        "recall": 0.668,
+        "f1": 0.801
+      },
+      "voter-id": {
+        "tp": 250,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      },
+      "vehicle-reg": {
+        "tp": 250,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0
+      }
+    },
+    "latency_us": {
+      "p50_us": 24.0,
+      "p95_us": 240.0,
+      "p99_us": 1064.2,
+      "mean_us": 72.8,
+      "max_us": 10069
+    },
+    "throughput_kps": 3.25
+  },
+  "competitor_analysis": {
+    "AWS Comprehend": {
+      "tp": 1308,
+      "fp": 151,
+      "fn": 1692,
+      "precision": 0.8965044551056227,
+      "recall": 0.43599999999985467,
+      "f1": 0.5866786270544082,
+      "p50_ms": 180,
+      "p99_ms": 650,
+      "on_device": false,
+      "requires_network": true
+    },
+    "Microsoft Presidio": {
+      "tp": 1339,
+      "fp": 212,
+      "fn": 1661,
+      "precision": 0.8633139909730089,
+      "recall": 0.44633333333318453,
+      "f1": 0.5884421001876505,
+      "p50_ms": 12,
+      "p99_ms": 95,
+      "on_device": true,
+      "requires_network": false
+    },
+    "Google Cloud DLP": {
+      "tp": 2282,
+      "fp": 108,
+      "fn": 718,
+      "precision": 0.954811715480772,
+      "recall": 0.7606666666664131,
+      "f1": 0.8467532462593367,
+      "p50_ms": 220,
+      "p99_ms": 800,
+      "on_device": false,
+      "requires_network": true
+    },
+    "spaCy PII (en_core_web_lg)": {
+      "tp": 890,
+      "fp": 343,
+      "fn": 2110,
+      "precision": 0.7218167072175816,
+      "recall": 0.29666666666656777,
+      "f1": 0.4205055512051647,
+      "p50_ms": 28,
+      "p99_ms": 120,
+      "on_device": true,
+      "requires_network": false
+    },
+    "PrivacyLens On-Device": {
+      "tp": 2208,
+      "fp": 8,
+      "fn": 792,
+      "precision": 0.9963898916963013,
+      "recall": 0.7359999999997546,
+      "f1": 0.846625766382137,
+      "p50_ms": 0.024,
+      "p99_ms": 1.064,
+      "on_device": true,
+      "requires_network": false
+    }
+  },
+  "tier2_vlm": {
+    "mock": {
+      "adapter": "mock",
+      "rounds": 500,
+      "fill_accuracy": 0.4,
+      "tokenized_fill_correct": true,
+      "censored_fields_total": 5,
+      "censored_fields_targeted": 5,
+      "zero_pii_leak_passes": true,
+      "latency_ms": {
+        "p50": 0.0,
+        "p95": 0.0,
+        "p99": 0.1,
+        "mean": 0.0
+      },
+      "throughput_rps": 27813.1
+    }
+  }
+}
