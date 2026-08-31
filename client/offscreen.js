@@ -10,6 +10,7 @@ import { redactCanvas } from "./lib/redact.mjs";
 import { mergeDetections, redundancyStats } from "./lib/merge.mjs";
 import { associateLabels } from "./lib/label-assoc.mjs";
 import { isSensitiveCategory } from "./lib/sensitive-fields.mjs";
+import { detectObjects, visionModelInfo } from "./lib/vision-transformer.mjs";
 
 const url = (p) => chrome.runtime.getURL(p);
 
@@ -109,12 +110,16 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
   const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
   canvas.getContext("2d").drawImage(bitmap, 0, 0);
 
-  const [ocr, faces] = await Promise.all([
+  const [ocr, faces, vit] = await Promise.all([
     runOCR(bitmap).catch((e) => ({ dets: [], lines: [], lineCount: 0, ms: 0, error: e.message })),
     runFaces(bitmap).catch((e) => ({ dets: [], ms: 0, available: false, error: e.message })),
+    // Vision Transformer (YOLOS-tiny) — WebGPU with WASM fallback
+    detectObjects(url, canvas).catch((e) => ({ dets: [], backend: null, ms: 0, loadMs: null, labels: [], available: false, error: e.message, gpu: { available: false } })),
   ]);
   timings.ocrMs = Math.round(ocr.ms);
   timings.faceMs = Math.round(faces.ms);
+  timings.vitMs = Math.round(vit.ms);
+  if (vit.loadMs != null) timings.vitLoadMs = vit.loadMs;
 
   // vision-derived field classifications for fields the DOM couldn't name
   const labelDets = fields.length ? associateLabels(ocr.lines || [], fields, dpr) : [];
@@ -127,7 +132,10 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
     bbox: { x: d.bbox.x * dpr, y: d.bbox.y * dpr, w: d.bbox.w * dpr, h: d.bbox.h * dpr },
   }));
 
-  const visionDets = [...ocr.dets, ...faces.dets, ...labelDets];
+  // Only the ViT's privacy-relevant classes (person) join the redaction merge;
+  // the rest of its labels are kept as visual context, not as redaction targets.
+  const vitPrivacyDets = (vit.dets || []).filter((d) => d.privacy);
+  const visionDets = [...ocr.dets, ...faces.dets, ...labelDets, ...vitPrivacyDets];
   const merged = mergeDetections(domScaled, visionDets, 0.35);
 
   // fieldId -> category, for the service worker to enrich the skeleton
@@ -138,7 +146,7 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
   // flags as sensitive. This ensures the screenshot blackout list is
   // decided identically to skeleton filtering and the executor guard.
   const regions = merged
-    .filter((m) => isSensitiveCategory(m.category) || m.category === "face")
+    .filter((m) => isSensitiveCategory(m.category) || m.category === "face" || m.category === "person")
     .map((m) => ({ ...m.bbox, category: m.category }));
   const tRedact = performance.now();
   const applied = redactCanvas(canvas, regions, { mode });
@@ -166,6 +174,17 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
       faceDetectorAvailable: faces.available,
       ocrError: ocr.error || null,
       faceError: faces.error || null,
+      // --- client-side Vision Transformer ---
+      vit: {
+        ...visionModelInfo(),
+        available: vit.available,
+        backend: vit.backend,            // "webgpu" | "wasm" | null
+        gpu: vit.gpu,                    // adapter info when WebGPU is present
+        objects: (vit.dets || []).length,
+        privacyObjects: vitPrivacyDets.length,
+        labels: vit.labels || [],        // what the ViT saw on screen
+        error: vit.error || null,
+      },
     },
     timings,
   };

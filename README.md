@@ -37,7 +37,7 @@ moment, and types them in.
 
 | Path | What |
 |---|---|
-| `client/` | MV3 extension (Chrome + Firefox). Plain JS, no bundler. |
+| `client/` | MV3 extension (**Chrome/Chromium only** — see limitations). Plain JS, no bundler. |
 | `client/lib/*.mjs` | Shared logic: `pii-rules` (regex + Verhoeff/Luhn), `tokenizer` (vault), `redact` (canvas), `merge`, `field-classifier`, `agent-client`. |
 | `client/offscreen.*` | On-device OCR + face detection + redaction. |
 | `server/` | FastAPI agent. `VLM_MODE=gemini` (default), `openai` (any OpenAI-compatible VLM), or `mock` (offline). |
@@ -112,12 +112,18 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 
 ## Status / limitations
 
-- On-device vision is deliberately **light** (Tesseract OCR + BlazeFace). The DOM
-  classifier is primary; the vision channel (a) redacts PII values it OCRs and
-  (b) **names fields the DOM can't** by pairing the nearest OCR caption with an
-  unclassified field (`client/lib/label-assoc.mjs`, folded back into the skeleton
-  by the service worker). A transformer NER (Transformers.js is vendored) is the
-  next upgrade.
+- On-device vision runs **three** channels in the offscreen document:
+  1. **Vision Transformer** — YOLOS-tiny (`YolosForObjectDetection`, ViT/DETR
+     family, int8, 9.4 MB) via Transformers.js + ONNX Runtime Web,
+     **WebGPU with WASM(SIMD) fallback** (`client/lib/vision-transformer.mjs`).
+     Its `person` detections join the redaction merge (a face detector misses a
+     torso; the ViT doesn't); its full COCO label set is the "what is on screen"
+     signal. The backend that actually ran is reported in the popup.
+  2. **Tesseract OCR** (WASM) — reads on-screen text; PII values found in it are
+     redacted, and captions **name fields the DOM can't**
+     (`client/lib/label-assoc.mjs`, folded back into the skeleton).
+  3. **BlazeFace** (MediaPipe, WASM) — faces.
+  All model weights are vendored; inference makes no network call.
 - The field classifier does three passes: exact (`type`/`autocomplete`/`name`/
   `<label>`), fuzzy (letters-only substring match for obfuscated names like
   `02frstname`, `24emailadr`), and spatial (caption in a sibling grid/table cell).
@@ -125,5 +131,8 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 - Still weak: `<select>` triples sharing one caption (mm/dd/yy), Shadow DOM.
 - The `mock` agent is deterministic and makes the pipeline run offline; it's also
   the automatic fallback when a real VLM errors.
-- Firefox: MV3 + offscreen differ slightly; a background-page shim is noted in
-  `client/offscreen.js` comments.
+- **Firefox: not supported yet.** The extension is Chrome/Chromium-only — it uses
+  `chrome.offscreen` and `chrome.runtime.getContexts`, neither of which Firefox
+  implements, and there is no `webextension-polyfill` or
+  `browser_specific_settings.gecko` key. A Firefox path needs the offscreen
+  document replaced with a background/worker equivalent.
