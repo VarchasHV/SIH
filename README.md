@@ -37,7 +37,7 @@ moment, and types them in.
 
 | Path | What |
 |---|---|
-| `client/` | MV3 extension (**Chrome/Chromium only** — see limitations). Plain JS, no bundler. |
+| `client/` | Cross-browser MV3 extension (**Google Chrome** and **Mozilla Firefox**). Plain JS, no bundler. |
 | `client/lib/*.mjs` | Shared logic: `pii-rules` (regex + Verhoeff/Luhn), `tokenizer` (vault), `redact` (canvas), `merge`, `field-classifier`, `agent-client`. |
 | `client/offscreen.*` | On-device OCR + face detection + redaction. |
 | `server/` | FastAPI agent. `VLM_MODE=gemini` (default), `openai` (any OpenAI-compatible VLM), or `mock` (offline). |
@@ -131,8 +131,5 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 - Still weak: `<select>` triples sharing one caption (mm/dd/yy), Shadow DOM.
 - The `mock` agent is deterministic and makes the pipeline run offline; it's also
   the automatic fallback when a real VLM errors.
-- **Firefox: not supported yet.** The extension is Chrome/Chromium-only — it uses
-  `chrome.offscreen` and `chrome.runtime.getContexts`, neither of which Firefox
-  implements, and there is no `webextension-polyfill` or
-  `browser_specific_settings.gecko` key. A Firefox path needs the offscreen
-  document replaced with a background/worker equivalent.
+- **Cross-Browser Support (Chrome & Firefox)**: Fully compatible with both Google Chrome (using `chrome.offscreen` + WebGPU/WASM) and Mozilla Firefox (using native background vision dispatcher + Gecko MV3 manifest). In Firefox, load temporarily via `about:debugging#/runtime/this-firefox` -> **Load Temporary Add-on** -> select `client/manifest.json`.
+

@@ -1,8 +1,9 @@
-// Service worker: orchestrates the privacy-preserving agent loop.
+// Universal background service worker & event script: orchestrates the privacy-preserving agent loop.
+// Compatible with both Google Chrome (MV3 offscreen document) and Mozilla Firefox (Gecko MV3).
 //
 //   content (PL_PREPARE)  -> skeleton + domPiiBoxes + profile values   [PII stays local]
 //   captureVisibleTab     -> raw screenshot
-//   offscreen (PL_VISION) -> redacted screenshot (blackout) + vision detections
+//   vision (PL_VISION)    -> redacted screenshot (blackout) + vision detections
 //   filter                -> ALL redacted/sensitive fields are REMOVED from the skeleton
 //   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot
 //   content (PL_EXECUTE)  -> performs actions on unredacted fields only; strictly blocks censored fields
@@ -12,6 +13,10 @@
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
+
+const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
+  typeof chrome.offscreen !== "undefined" &&
+  typeof chrome.runtime?.getContexts === "function";
 
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
@@ -33,29 +38,48 @@ async function scanActiveTab() {
   }
 }
 
-// ---- offscreen lifecycle -------------------------------------------------
+// ---- vision engine dispatcher (Chrome Offscreen vs Firefox in-context) ----
 let offscreenReady = false;
-async function ensureOffscreen() {
-  const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
-  if (existing.length) { offscreenReady = true; return; }
-  offscreenReady = false;
-  await chrome.offscreen.createDocument({
-    url: "offscreen.html",
-    reasons: ["WORKERS", "BLOBS"],
-    justification: "Runs on-device OCR + face detection and redacts the screenshot before any network call.",
-  });
-  // wait for the module to register its message listener
-  for (let i = 0; i < 40 && !offscreenReady; i++) await new Promise((r) => setTimeout(r, 100));
+let visionPipelineModule = null;
+
+async function ensureVisionEngine() {
+  if (isChromeOffscreenSupported) {
+    const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+    if (existing.length) { offscreenReady = true; return; }
+    offscreenReady = false;
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["WORKERS", "BLOBS"],
+      justification: "Runs on-device OCR + face detection and redacts the screenshot before any network call.",
+    });
+    // wait for the module to register its message listener
+    for (let i = 0; i < 40 && !offscreenReady; i++) await new Promise((r) => setTimeout(r, 100));
+  } else {
+    // Firefox / environments without chrome.offscreen
+    if (!visionPipelineModule) {
+      visionPipelineModule = await import("./lib/vision-pipeline.mjs");
+    }
+    offscreenReady = true;
+  }
 }
 
-async function callOffscreen(message, tries = 3) {
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await chrome.runtime.sendMessage(message);
-    } catch (e) {
-      if (i === tries - 1) throw e;
-      await new Promise((r) => setTimeout(r, 250));
+async function executeVision(payload, tries = 3) {
+  if (isChromeOffscreenSupported) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        return await chrome.runtime.sendMessage({ action: "PL_VISION", payload });
+      } catch (e) {
+        if (i === tries - 1) throw e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
     }
+  } else {
+    // Firefox native path
+    if (!visionPipelineModule) {
+      visionPipelineModule = await import("./lib/vision-pipeline.mjs");
+    }
+    const res = await visionPipelineModule.processVision(payload);
+    return { ok: true, ...res };
   }
 }
 
@@ -104,7 +128,7 @@ async function runAgentTask(opts) {
   const tabId = tab.id;
   running = { cancel: false };
 
-  await ensureOffscreen();
+  await ensureVisionEngine();
   const history = [];
   let sanitizedPayloadForPreview = null;
 
@@ -123,9 +147,12 @@ async function runAgentTask(opts) {
     const fields = prep.skeleton.nodes
       .filter((n) => ["input", "textarea", "select"].includes(n.tag) && n.visible)
       .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox }));
-    const vis = await callOffscreen({
-      action: "PL_VISION",
-      payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, fields, dpr: prep.skeleton.viewport.dpr, mode: "blackout" },
+    const vis = await executeVision({
+      screenshot: shot,
+      domPiiBoxes: prep.domPiiBoxes,
+      fields,
+      dpr: prep.skeleton.viewport.dpr,
+      mode: "blackout",
     });
     if (!vis?.ok) throw new Error("vision failed: " + (vis?.error || "unknown"));
 
@@ -133,7 +160,6 @@ async function runAgentTask(opts) {
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
     // 4. SANITIZE SKELETON: PRESERVE CENSORED NODES WITH LOCAL FILL TOKENS, STRIP REAL DATA LEAKS
-    // The server sees element structure + isCensored: true + fillToken ("local:category"), with ZERO real values or label text.
     const sanitizedNodes = prep.skeleton.nodes.map((node) => {
       if (node.isCensored) {
         return {
@@ -217,7 +243,6 @@ async function runAgentTask(opts) {
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
       const targetNode = sanitizedNodes.find((n) => n.id === act.targetId);
-      // Double check guard: only block if targetNode is censored AND has no local fill data available
       if (targetNode?.isCensored && !targetNode?.hasFill && !targetNode?.fillToken) {
         emit({ type: "error", step, message: `Action blocked on censored node ${act.targetId}: no local profile data to fill` });
         continue;
