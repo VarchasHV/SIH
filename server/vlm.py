@@ -20,7 +20,7 @@ import re
 import time
 from pathlib import Path
 
-from schema import Action, StepRequest, StepResponse
+from .schema import Action, StepRequest, StepResponse
 
 SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text()
 

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-31T15:12:12.858Z",
+  "generatedAt": "2026-09-01T13:44:18.370Z",
   "server": "http://localhost:8000",
   "results": [
     {
@@ -17,11 +17,11 @@
       "targetingAccuracy": 0.7142857142857143,
       "latencyMs": {
         "steps": [
-          24,
-          2,
-          1
+          69,
+          5,
+          2
         ],
-        "total": 27
+        "total": 76
       }
     },
     {
@@ -39,14 +39,14 @@
       "targetingAccuracy": 0.5,
       "latencyMs": {
         "steps": [
-          1,
-          1,
-          1,
-          1,
-          1,
-          1
+          3,
+          2,
+          2,
+          2,
+          2,
+          6
         ],
-        "total": 6
+        "total": 17
       }
     },
     {
@@ -64,12 +64,12 @@
       "targetingAccuracy": 0.6363636363636364,
       "latencyMs": {
         "steps": [
-          1,
-          1,
-          1,
-          1
+          4,
+          2,
+          2,
+          3
         ],
-        "total": 4
+        "total": 11
       }
     },
     {
@@ -87,11 +87,11 @@
       "targetingAccuracy": 0.8571428571428571,
       "latencyMs": {
         "steps": [
-          1,
-          1,
-          1
+          3,
+          4,
+          4
         ],
-        "total": 3
+        "total": 11
       }
     }
   ],
@@ -103,7 +103,7 @@
     "wrong": 1,
     "unknown": 0,
     "restricted": 0,
-    "ms": 40,
+    "ms": 115,
     "coverage": 1,
     "targeting": 0.6222222222222222,
     "score": 0.7671232876712328

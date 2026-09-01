@@ -11,8 +11,8 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from schema import StepRequest, StepResponse
-from vlm import run_step
+from .schema import StepRequest, StepResponse
+from .vlm import run_step
 
 from pathlib import Path
 

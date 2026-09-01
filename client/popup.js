@@ -19,8 +19,15 @@ const PROFILE_FIELDS = [
   ["email", "aditi.sharma@example.com"],
   ["phone number", "9876543210"],
   ["date of birth", "14/03/1998"],
+  ["age", "26"],
   ["address", "42 Nehru Road, Bengaluru"],
   ["postal/ZIP code", "560001"],
+  ["State", "Karnataka"],
+  ["country", "India"],
+  ["Aadhaar no", "1234 5678 9012"],
+  ["pan card", "ABCDE1234F"],
+  ["Passport number", "A1234567"],
+  ["Website", "https://example.com"],
 ];
 
 async function loadProfile() {
