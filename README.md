@@ -132,4 +132,5 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 - The `mock` agent is deterministic and makes the pipeline run offline; it's also
   the automatic fallback when a real VLM errors.
 - **Cross-Browser Support (Chrome & Firefox)**: Fully compatible with both Google Chrome (using `chrome.offscreen` + WebGPU/WASM) and Mozilla Firefox (using native background vision dispatcher + Gecko MV3 manifest). In Firefox, load temporarily via `about:debugging#/runtime/this-firefox` -> **Load Temporary Add-on** -> select `client/manifest.json`.
+- **Adversarial Guard & Threat Model**: `client/lib/adversarial-guard.mjs` provides an on-device first-line heuristic defense against prompt injections, leetspeak variants (`1gn0re`), zero-width Unicode steganography (`\u200B`), hidden styles, and attribute injections (`alt`/`aria-label`/`title`). *Known Limitation*: As a heuristic regex layer, it catches known attack signatures and obfuscations, but is not a full semantic NLP classifier for arbitrary open-ended paraphrases. It operates in defense-in-depth alongside structural DLP tokenization, zero-PII skeleton filtering, and human-in-the-loop gates.
 
