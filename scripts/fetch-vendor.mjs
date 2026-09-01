@@ -36,10 +36,15 @@ const FILES = [
     out: "models/Xenova/yolos-tiny/preprocessor_config.json",
   },
   {
-    // saved as model_q8.onnx: Transformers.js v3 resolves dtype "q8" to that
-    // filename, while the HF repo still publishes the v2 name.
+    // Vendored ONNX int8 weights: saved under both model_quantized.onnx and model_q8.onnx
+    // so Transformers.js resolves it offline seamlessly.
     url: "https://huggingface.co/Xenova/yolos-tiny/resolve/main/onnx/model_quantized.onnx",
-    out: "models/Xenova/yolos-tiny/onnx/model_q8.onnx",
+    out: "models/Xenova/yolos-tiny/onnx/model_quantized.onnx",
+    aliases: [
+      "models/Xenova/yolos-tiny/onnx/model_q8.onnx",
+      "models/Xenova/yolos-tiny/model_quantized.onnx",
+      "models/Xenova/yolos-tiny/model_q8.onnx"
+    ],
   },
   {
     // Tesseract.js main thread API (UMD).
@@ -93,7 +98,7 @@ const FILES = [
   },
 ];
 
-async function fetchOne({ url, out }) {
+async function fetchOne({ url, out, aliases = [] }) {
   const dest = join(VENDOR, out);
   await mkdir(dirname(dest), { recursive: true });
   process.stdout.write(`  ${out} ... `);
@@ -101,7 +106,12 @@ async function fetchOne({ url, out }) {
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   const buf = Buffer.from(await res.arrayBuffer());
   await writeFile(dest, buf);
-  console.log(`${(buf.length / 1024).toFixed(0)} KB`);
+  for (const alias of aliases) {
+    const aliasDest = join(VENDOR, alias);
+    await mkdir(dirname(aliasDest), { recursive: true });
+    await writeFile(aliasDest, buf);
+  }
+  console.log(`${(buf.length / 1024).toFixed(0)} KB${aliases.length ? ` (+${aliases.length} aliases)` : ""}`);
 }
 
 console.log("Fetching vendor libraries into client/vendor/ ...");

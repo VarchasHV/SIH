@@ -48,19 +48,23 @@ export async function probeWebGPU() {
 }
 
 async function loadPipeline(runtimeUrl) {
-  const { pipeline, env } = await import(runtimeUrl("vendor/transformers.min.js"));
+  const getUrl = typeof runtimeUrl === "function"
+    ? runtimeUrl
+    : (p) => (typeof chrome !== "undefined" && chrome.runtime?.getURL ? chrome.runtime.getURL(p) : `./${p}`);
+
+  const { pipeline, env } = await import(getUrl("vendor/transformers.min.js"));
 
   // Fully local: never touch the Hugging Face CDN at inference time.
   env.allowRemoteModels = false;
   env.allowLocalModels = true;
-  env.localModelPath = runtimeUrl("vendor/models/");
+  env.localModelPath = getUrl("vendor/models/");
   env.useBrowserCache = false;
   // One JSEP binary serves both the WebGPU and the WASM execution providers.
   // `backends.onnx.wasm` is created lazily by some builds — make it safely.
   env.backends = env.backends || {};
   env.backends.onnx = env.backends.onnx || {};
   env.backends.onnx.wasm = env.backends.onnx.wasm || {};
-  env.backends.onnx.wasm.wasmPaths = runtimeUrl("vendor/");
+  env.backends.onnx.wasm.wasmPaths = getUrl("vendor/");
   env.backends.onnx.wasm.numThreads = 1; // no COOP/COEP in an extension page
 
   const gpu = await probeWebGPU();
@@ -70,7 +74,11 @@ async function loadPipeline(runtimeUrl) {
   for (const device of order) {
     const t0 = performance.now();
     try {
-      const pipe = await pipeline("object-detection", MODEL_ID, { device, dtype: "q8" });
+      const pipe = await pipeline("object-detection", MODEL_ID, {
+        device,
+        dtype: "q8",
+        local_files_only: true,
+      });
       _backend = device;
       _loadMs = Math.round(performance.now() - t0);
       return { pipe, gpu };

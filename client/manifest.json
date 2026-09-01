@@ -3,6 +3,12 @@
   "name": "Privacy Lens — Vision Agent",
   "version": "0.2.0",
   "description": "On-device vision agent: reads the screen, redacts PII locally, and lets a server VLM drive form-filling without ever seeing your data.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "privacy-lens@sih2026.org",
+      "strict_min_version": "109.0"
+    }
+  },
   "permissions": ["activeTab", "scripting", "storage", "offscreen", "tabs"],
   "host_permissions": [
     "http://localhost:8000/*",
@@ -15,12 +21,21 @@
   },
   "background": {
     "service_worker": "background.js",
+    "scripts": ["background.js"],
     "type": "module"
   },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["lib/sensitive-fields.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
+      "js": [
+        "lib/sensitive-fields.js",
+        "dlp-content-script.js",
+        "content.js",
+        "skeleton.js",
+        "executor.js",
+        "agent-bridge.js",
+        "dom-redactor.js"
+      ],
       "run_at": "document_idle"
     }
   ],
@@ -31,6 +46,9 @@
     {
       "resources": [
         "vendor/*",
+        "vendor/**/*",
+        "vendor/models/*",
+        "vendor/models/**/*",
         "vendor/mp-wasm/*",
         "lib/*"
       ],
