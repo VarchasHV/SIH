@@ -4,7 +4,10 @@
  *
  * Chrome/Firefox need different `background` architectures (service_worker vs
  * scripts), so we keep one source manifest per target and copy the right one
- * into place before loading the extension.
+ * to client/manifest.json.
+ *
+ * client/manifest.json is committed as the Chrome build so "Load unpacked"
+ * works on a fresh clone with no build step. Run this only to switch builds:
  *
  *   node scripts/build-manifest.mjs chrome    (default)
  *   node scripts/build-manifest.mjs firefox

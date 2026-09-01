@@ -62,16 +62,18 @@ npm run server                       # http://localhost:8000
 npm run fixtures                     # http://localhost:4173  (the demo forms)
 ```
 
-1. Pick the browser-specific manifest, then load the extension:
-   - **Chrome:** `npm run manifest:chrome` → `chrome://extensions` → Developer mode →
-     **Load unpacked** → select `client/`.
-   - **Firefox:** `npm run manifest:firefox` → `about:debugging#/runtime/this-firefox` →
-     **Load Temporary Add-on** → select `client/manifest.json`.
+1. Load the extension:
+   - **Chrome:** `chrome://extensions` → Developer mode → **Load unpacked** →
+     select `client/`. `client/manifest.json` is committed as the Chrome build,
+     so this works with no build step. (If you previously switched to Firefox,
+     run `npm run manifest:chrome` to switch back.)
+   - **Firefox:** `npm run manifest:firefox`, then `about:debugging#/runtime/this-firefox`
+     → **Load Temporary Add-on** → select `client/manifest.json`.
 
    Chrome and Firefox need different `background` architectures (`service_worker` vs
-   `scripts`), so `client/manifest.json` is generated from `client/manifest.chrome.json`
+   `scripts`), so `client/manifest.json` is copied from `client/manifest.chrome.json`
    or `client/manifest.firefox.json` by `scripts/build-manifest.mjs`. Edit the two
-   source manifests, not the generated one.
+   source manifests, not `client/manifest.json`.
 2. Open the extension popup → **Profile** tab → fill in some values → **Save profile**
    (they go to `chrome.storage.local` only).
 3. Open a fixture (e.g. `http://localhost:4173/kyc.html`).

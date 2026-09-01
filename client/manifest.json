@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "Privacy Lens — Vision Agent",
+  "version": "0.2.0",
+  "description": "On-device vision agent: reads the screen, redacts PII locally, and lets a server VLM drive form-filling without ever seeing your data.",
+  "permissions": ["activeTab", "scripting", "storage", "offscreen", "tabs"],
+  "host_permissions": [
+    "http://localhost:8000/*",
+    "http://127.0.0.1:8000/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Privacy Lens — Vision Agent",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "lib/sensitive-fields.js",
+        "lib/adversarial-guard.js",
+        "lib/dpdp-audit.js",
+        "dlp-content-script.js",
+        "content.js",
+        "skeleton.js",
+        "executor.js",
+        "agent-bridge.js",
+        "dom-redactor.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/*",
+        "vendor/**/*",
+        "vendor/models/*",
+        "vendor/models/**/*",
+        "vendor/mp-wasm/*",
+        "lib/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

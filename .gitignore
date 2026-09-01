@@ -19,9 +19,6 @@ client/vendor/*
 # Eval output
 eval/out/
 
-# Generated per-browser manifest (build with: npm run manifest:chrome | manifest:firefox)
-client/manifest.json
-
 # Misc
 *.local
 
