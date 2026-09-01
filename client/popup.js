@@ -50,6 +50,62 @@ if (saveBtn) {
   });
 }
 
+// ---- guided goal builder --------------------------------------
+// Composes an intent-only task string. Field *names* only — never any value —
+// so nothing sensitive can reach the agent through the goal. (The composed
+// string is still DLP-scrubbed in the background as defense in depth.)
+const guidedWrap = $("#goal-guided");
+const customWrap = $("#goal-custom");
+const modeGuidedBtn = $("#mode-guided");
+const modeCustomBtn = $("#mode-custom");
+let goalMode = "guided";
+
+function setGoalMode(mode) {
+  goalMode = mode;
+  modeGuidedBtn.classList.toggle("is-active", mode === "guided");
+  modeCustomBtn.classList.toggle("is-active", mode === "custom");
+  guidedWrap.hidden = mode !== "guided";
+  customWrap.hidden = mode !== "custom";
+}
+modeGuidedBtn.addEventListener("click", () => setGoalMode("guided"));
+modeCustomBtn.addEventListener("click", () => setGoalMode("custom"));
+
+// field chips come from the same non-sensitive profile keys
+const gbFieldList = $("#gb-field-list");
+PROFILE_FIELDS.forEach(([key]) => {
+  const l = document.createElement("label");
+  l.className = "check";
+  l.innerHTML = `<input type="checkbox" data-field="${key}" /> ${key}`;
+  gbFieldList.appendChild(l);
+});
+
+function listPhrase(items) {
+  if (items.length === 1) return `${items[0]} field`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]} fields`;
+}
+
+function composeGuidedGoal() {
+  const scope = document.querySelector('input[name="gb-scope"]:checked')?.value || "all";
+  const submit = document.querySelector('input[name="gb-submit"]:checked')?.value || "stop";
+  let s = "Fill this form using my saved local profile.";
+  if (scope === "pick") {
+    const picked = [...gbFieldList.querySelectorAll("input:checked")].map((i) => i.dataset.field);
+    if (picked.length) s = `Fill this form using my saved local profile, but only the ${listPhrase(picked)}.`;
+  }
+  s += submit === "submit"
+    ? " Submit the form after every field has been filled."
+    : " Stop before submitting so I can review.";
+  return s;
+}
+
+function refreshGuided() {
+  const pickMode = document.querySelector('input[name="gb-scope"]:checked')?.value === "pick";
+  $("#gb-fields").hidden = !pickMode;
+  $("#gb-preview").textContent = composeGuidedGoal();
+}
+guidedWrap.addEventListener("change", refreshGuided);
+refreshGuided();
+
 // ---- presets ----------------------------------------------------
 const PRESETS = [
   "Fill this job application with my basic contact info. Stop before submitting.",
@@ -62,7 +118,7 @@ PRESETS.forEach((p) => {
   b.className = "preset";
   b.textContent = p.slice(0, 34) + "…";
   b.title = p;
-  b.addEventListener("click", () => ($("#goal").value = p));
+  b.addEventListener("click", () => { setGoalMode("custom"); $("#goal").value = p; });
   presetRow.appendChild(b);
 });
 
@@ -77,15 +133,103 @@ function log(text, cls = "") {
 }
 
 const egress = $("#egress");
+const securityHud = $("#security-hud");
+const threatsList = $("#security-threats");
+const viewSingleBtn = $("#view-single");
+const viewDiffBtn = $("#view-diff");
+const singleView = $("#egress-single-view");
+const diffView = $("#egress-diff-view");
+
+viewSingleBtn.addEventListener("click", () => {
+  viewSingleBtn.classList.add("is-active");
+  viewDiffBtn.classList.remove("is-active");
+  singleView.hidden = false;
+  diffView.hidden = true;
+});
+
+viewDiffBtn.addEventListener("click", () => {
+  viewDiffBtn.classList.add("is-active");
+  viewSingleBtn.classList.remove("is-active");
+  singleView.hidden = true;
+  diffView.hidden = false;
+});
+
+const hybridHud = $("#hybrid-hud");
+const hybridBadge = $("#hybrid-badge");
+const hybridDesc = $("#hybrid-desc");
+const exportDpdpBtn = $("#export-dpdp-btn");
+let lastDpdpReport = null;
+
+exportDpdpBtn.addEventListener("click", () => {
+  if (!lastDpdpReport) return;
+  const jsonStr = JSON.stringify(lastDpdpReport, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `dpdp-audit-log-step${lastDpdpReport.step || 1}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 function showEgress(evt) {
   egress.hidden = false;
   $("#egress-img").src = evt.redactedImage;
-  const s = evt.visionStats || {};
+  $("#diff-redacted-img").src = evt.redactedImage;
+  if (evt.rawImage) {
+    $("#diff-raw-img").src = evt.rawImage;
+  }
+
+  // Render Security Alert HUD if any adversarial injections were detected and blocked
+  const alerts = evt.securityAlerts || [];
+  if (alerts.length > 0) {
+    securityHud.hidden = false;
+    $("#security-title").textContent = `🛡️ ${alerts.length} ADVERSARIAL INJECTION${alerts.length > 1 ? "S" : ""} BLOCKED`;
+    threatsList.replaceChildren();
+    alerts.forEach((a) => {
+      const li = document.createElement("li");
+      li.textContent = `[${a.type}] ${a.reason || a.text || "Malicious instruction quarantined"}`;
+      threatsList.appendChild(li);
+    });
+    log(`🛡️ Blocked ${alerts.length} adversarial injection vector(s)`, "err");
+  } else {
+    securityHud.hidden = true;
+  }
+
+  // Render Hybrid Engine HUD
   const t = evt.timings || {};
+  const a11y = evt.a11yStats || {};
+  if (t.a11yBypassed) {
+    hybridHud.hidden = false;
+    hybridBadge.textContent = "⚡ HYBRID A11Y FAST-PATH";
+    hybridDesc.textContent = `ViT/OCR bypassed (${Math.round((a11y.confidence || 1) * 100)}% structured A11y tree confidence — saved ~${t.latencySavingsMs || 280}ms)`;
+  } else if (a11y.totalNodes > 0) {
+    hybridHud.hidden = false;
+    hybridBadge.textContent = "👁️ VISION FALLBACK ACTIVE";
+    hybridDesc.textContent = `Multimodal ViT + OCR triggered (Visual controls/canvas detected)`;
+  } else {
+    hybridHud.hidden = true;
+  }
+
+  // Configure DPDP Compliance Audit Log
+  if (evt.dpdpReport) {
+    lastDpdpReport = evt.dpdpReport;
+    exportDpdpBtn.hidden = false;
+  }
+
+  const s = evt.visionStats || {};
+  const v = s.vit || {};
+  const vitLine = v.available
+    ? `ViT ${v.modelId || "yolos-tiny"} on ${String(v.backend || "?").toUpperCase()}` +
+      `${v.gpu?.available && v.gpu.vendor ? ` (${v.gpu.vendor}${v.gpu.architecture ? " " + v.gpu.architecture : ""})` : ""}` +
+      ` · ${t.vitMs ?? "?"}ms${v.loadMs != null ? ` (load ${v.loadMs}ms)` : ""}` +
+      ` · saw ${v.objects ?? 0} object(s)${v.labels?.length ? ": " + v.labels.slice(0, 6).join(", ") : ""}`
+    : `ViT unavailable${v.error ? ` — ${v.error}` : ""}`;
   $("#egress-stats").textContent =
-    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
-    `regions blacked out: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
-    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}`;
+    `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · ViT ${t.vitMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
+    `hybrid mode: ${t.a11yBypassed ? "A11y Fast-Path" : "Vision Fallback"} · regions blacked out: ${s.total ?? 0} · ocr lines: ${s.ocrLines ?? 0}\n` +
+    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}${alerts.length ? ` · 🛡️ threats quarantined: ${alerts.length}` : ""}\n` +
+    vitLine;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
 }
 
@@ -114,6 +258,9 @@ chrome.runtime.onMessage.addListener((m) => {
   const e = m.evt;
   switch (e.type) {
     case "step-start": log(`— step ${e.step} —`); break;
+    case "goal-redacted":
+      log(`goal scrubbed before egress (${e.hits.join(", ")}); sent: "${e.sanitized}"`, "err");
+      break;
     case "egress": showEgress(e); log(`censored with black boxes (step ${e.step})`); break;
     case "gate": showGate(e.id, e.kind); break;
     case "plan":
@@ -126,7 +273,7 @@ chrome.runtime.onMessage.addListener((m) => {
     }
     case "error": log(`error [${e.where || ""}]: ${e.message}`, "err"); break;
     case "submit-skipped": log("submit skipped by user"); break;
-    case "done": log(`✔ task complete (step ${e.step})`, "ok"); break;
+    case "done": log(`✔ task complete (step ${e.step})${e.reason ? ` — ${e.reason}` : ""}`, "ok"); break;
     case "cancelled": log("cancelled", "err"); break;
     case "finished":
       setBusy(false);
@@ -143,7 +290,7 @@ function setBusy(b) {
 }
 
 $("#run-button").addEventListener("click", () => {
-  const goal = $("#goal").value.trim();
+  const goal = goalMode === "guided" ? composeGuidedGoal() : $("#goal").value.trim();
   if (!goal) { $("#goal").focus(); return; }
   logEl.replaceChildren();
   egress.hidden = true;

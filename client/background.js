@@ -1,10 +1,12 @@
-// Service worker: orchestrates the privacy-preserving agent loop.
+// Universal background service worker & event script: orchestrates the privacy-preserving agent loop.
+// Compatible with both Google Chrome (MV3 offscreen document) and Mozilla Firefox (Gecko MV3).
 //
 //   content (PL_PREPARE)  -> skeleton + domPiiBoxes + profile values   [PII stays local]
 //   captureVisibleTab     -> raw screenshot
-//   offscreen (PL_VISION) -> redacted screenshot (blackout) + vision detections
+//   vision (PL_VISION)    -> redacted screenshot (blackout) + vision detections
 //   filter                -> ALL redacted/sensitive fields are REMOVED from the skeleton
-//   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot
+//   goal    -> free-form task goal is DLP-scrubbed (sanitizeTaskGoal) before egress
+//   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot + scrubbed goal
 //   content (PL_EXECUTE)  -> performs actions on unredacted fields only; strictly blocks censored fields
 //
 // The popup receives PL_PROGRESS events (including the exact egress payload) and
@@ -12,14 +14,39 @@
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
+import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
+import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
+
+const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
+  typeof chrome.offscreen !== "undefined" &&
+  typeof chrome.runtime?.getContexts === "function";
 
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
   redactionMode: "blackout",
-  maxSteps: 12,
+  maxSteps: 8,
   confirmEachSend: false,
   confirmBeforeSubmit: true,
 };
+
+// Loop-termination tuning. The agent must converge, not spin.
+const MAX_FIELD_ATTEMPTS = 2;   // give up on a field after this many failed fills
+const MAX_STAGNANT_STEPS = 2;   // stop after this many steps with zero new fills
+
+const wantsSubmit = (goal) =>
+  /\b(submit|and submit|complete and submit|send the form)\b/i.test(goal) &&
+  !/\b(don'?t submit|do not submit|stop before submit(ting)?|without submitting|no submit)\b/i.test(goal);
+
+const planSignature = (actions) =>
+  (actions || []).map((a) => `${a.action}:${a.targetId || a.ms || ""}`).join("|");
+
+// Can the agent actually act on this node? (empty, on-screen, and we have a way to fill it)
+function isActionable(n, isDead) {
+  if (!n.visible || n.state !== "empty" || n.skip || isDead(n.id)) return false;
+  if (["input", "textarea"].includes(n.tag)) return !!(n.hasFill || n.fillToken);
+  if (n.tag === "select") return Array.isArray(n.options) && n.options.length > 0;
+  return false;
+}
 
 // ---- legacy "scan" path (unchanged behaviour for the old popup button) ----
 async function scanActiveTab() {
@@ -33,36 +60,55 @@ async function scanActiveTab() {
   }
 }
 
-// ---- offscreen lifecycle -------------------------------------------------
+// ---- vision engine dispatcher (Chrome Offscreen vs Firefox in-context) ----
 let offscreenReady = false;
-async function ensureOffscreen() {
-  const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
-  if (existing.length) { offscreenReady = true; return; }
-  offscreenReady = false;
-  await chrome.offscreen.createDocument({
-    url: "offscreen.html",
-    reasons: ["WORKERS", "BLOBS"],
-    justification: "Runs on-device OCR + face detection and redacts the screenshot before any network call.",
-  });
-  // wait for the module to register its message listener
-  for (let i = 0; i < 40 && !offscreenReady; i++) await new Promise((r) => setTimeout(r, 100));
+let visionPipelineModule = null;
+
+async function ensureVisionEngine() {
+  if (isChromeOffscreenSupported) {
+    const existing = await chrome.runtime.getContexts({ contextTypes: ["OFFSCREEN_DOCUMENT"] });
+    if (existing.length) { offscreenReady = true; return; }
+    offscreenReady = false;
+    await chrome.offscreen.createDocument({
+      url: "offscreen.html",
+      reasons: ["WORKERS", "BLOBS"],
+      justification: "Runs on-device OCR + face detection and redacts the screenshot before any network call.",
+    });
+    // wait for the module to register its message listener
+    for (let i = 0; i < 40 && !offscreenReady; i++) await new Promise((r) => setTimeout(r, 100));
+  } else {
+    // Firefox / environments without chrome.offscreen
+    if (!visionPipelineModule) {
+      visionPipelineModule = await import("./lib/vision-pipeline.mjs");
+    }
+    offscreenReady = true;
+  }
 }
 
-async function callOffscreen(message, tries = 3) {
-  for (let i = 0; i < tries; i++) {
-    try {
-      return await chrome.runtime.sendMessage(message);
-    } catch (e) {
-      if (i === tries - 1) throw e;
-      await new Promise((r) => setTimeout(r, 250));
+async function executeVision(payload, tries = 3) {
+  if (isChromeOffscreenSupported) {
+    for (let i = 0; i < tries; i++) {
+      try {
+        return await chrome.runtime.sendMessage({ action: "PL_VISION", payload });
+      } catch (e) {
+        if (i === tries - 1) throw e;
+        await new Promise((r) => setTimeout(r, 250));
+      }
     }
+  } else {
+    // Firefox native path
+    if (!visionPipelineModule) {
+      visionPipelineModule = await import("./lib/vision-pipeline.mjs");
+    }
+    const res = await visionPipelineModule.processVision(payload);
+    return { ok: true, ...res };
   }
 }
 
 async function injectAgentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["lib/sensitive-fields.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
+    files: ["lib/sensitive-fields.js", "lib/adversarial-guard.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
   });
 }
 
@@ -99,14 +145,34 @@ let running = null;
 
 async function runAgentTask(opts) {
   const cfg = { ...DEFAULTS, ...opts };
+
+  // DLP egress guard: the goal is free-form user text and is a common place for
+  // literal PII to leak to the remote VLM. Scrub it once, up front, and only
+  // ever transmit the sanitized form.
+  const safeGoal = sanitizeTaskGoal(cfg.goal);
+  if (safeGoal.redacted) {
+    emit({ type: "goal-redacted", original: cfg.goal, sanitized: safeGoal.text, hits: safeGoal.hits });
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) throw new Error("No active tab.");
   const tabId = tab.id;
   running = { cancel: false };
 
-  await ensureOffscreen();
+  await ensureVisionEngine();
   const history = [];
   let sanitizedPayloadForPreview = null;
+
+  // ---- convergence trackers ----
+  const filledOk = new Set();          // targetIds we successfully filled + verified
+  const failedAttempts = new Map();    // targetId -> failed fill count
+  const isDead = (id) => (failedAttempts.get(id) || 0) >= MAX_FIELD_ATTEMPTS;
+  let stagnantSteps = 0;
+  let prevPlanSig = null;
+  let didSubmit = false;
+  const goalWantsSubmit = wantsSubmit(safeGoal.text);
+
+  const stop = (step, reason) => { emit({ type: "done", step, reason }); };
 
   for (let step = 1; step <= cfg.maxSteps; step++) {
     if (running.cancel) { emit({ type: "cancelled", step }); break; }
@@ -163,19 +229,50 @@ async function runAgentTask(opts) {
       };
     });
 
+    // 4b. Retire fields we've already tried and failed to fill, so the model
+    //     stops proposing them every step (the #1 cause of the loop spinning).
+    for (const n of sanitizedNodes) {
+      if (n.state === "empty" && isDead(n.id)) {
+        n.state = "readonly";
+        n.skip = true;
+      }
+    }
+
     const sanitizedSkeleton = {
       ...prep.skeleton,
       nodes: sanitizedNodes,
     };
 
+    // 4c. Local completion check — if there is nothing the agent can still do,
+    //     stop now instead of burning steps asking the model to invent work.
+    const actionable = sanitizedNodes.filter((n) => isActionable(n, isDead));
+    const submitBtn = sanitizedNodes.find(
+      (n) => n.visible && (n.isSubmit || n.tag === "button" || n.role === "button"),
+    );
+    if (actionable.length === 0) {
+      if (goalWantsSubmit && submitBtn && !didSubmit) {
+        // fall through — let the agent press submit this step
+      } else if (filledOk.size === 0 && step === 1) {
+        // page may still be mounting (SPA); give it one grace cycle before giving up
+        emit({ type: "step-start", step: step + 0.5 });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      } else {
+        stop(step, filledOk.size
+          ? "all fillable fields handled"
+          : "no fields could be filled — add values in the Profile tab");
+        break;
+      }
+    }
+
     // 5. Sanitized payload sent to server — zero PII, zero raw secret values
     const payload = {
-      taskGoal: cfg.goal,
+      taskGoal: safeGoal.text,
       step,
       skeleton: sanitizedSkeleton,
       visionDetections: [], // Never send PII category names/locations to the LLM
       screenshot: vis.redactedDataURL,
-      history: history.slice(-4),
+      history: history.slice(-8),
     };
     sanitizedPayloadForPreview = { ...payload, screenshot: "<blacked-out image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
 
@@ -183,7 +280,11 @@ async function runAgentTask(opts) {
       type: "egress",
       step,
       payloadPreview: sanitizedPayloadForPreview,
+      rawImage: shot,
       redactedImage: vis.redactedDataURL,
+      securityAlerts: prep.securityAlerts || [],
+      dpdpReport,
+      a11yStats: prep.skeleton.a11yStats,
       visionStats: vis.stats,
       timings: vis.timings,
     });
@@ -214,15 +315,25 @@ async function runAgentTask(opts) {
       continue;
     }
 
+    // 8b. Repeat-plan guard: if the model returns the exact same non-terminal
+    //     plan two steps running, it is stuck — stop rather than spin.
+    const planSig = planSignature(v.actions);
+    const terminalPlan = v.actions.some((a) => a.action === "submit" || a.action === "done");
+    if (planSig && planSig === prevPlanSig && !terminalPlan) {
+      stop(step, "agent repeated the same plan with no progress");
+      break;
+    }
+    prevPlanSig = planSig;
+
     // 9. execute
     let doneFlag = false;
+    let progressed = false; // any state-changing action landed this step
     for (const act of v.actions) {
       if (act.action === "submit" && cfg.confirmBeforeSubmit) {
         const ok = await waitForGate(`submit-${step}`, "submit");
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
       const targetNode = sanitizedNodes.find((n) => n.id === act.targetId);
-      // Double check guard: only block if targetNode is censored AND has no local fill data available
       if (targetNode?.isCensored && !targetNode?.hasFill && !targetNode?.fillToken) {
         emit({ type: "error", step, message: `Action blocked on censored node ${act.targetId}: no local profile data to fill` });
         continue;
@@ -235,12 +346,36 @@ async function runAgentTask(opts) {
       }
       send(tabId, { action: "PL_HIGHLIGHT", regions: targetNode ? [targetNode.bbox] : [], kind: "target" }).catch(() => {});
       const res = await send(tabId, { action: "PL_EXECUTE", step: act });
-      emit({ type: "action", step, action: act, result: res?.result });
-      history.push({ step, action: sanitizeAction(act), result: res?.result });
-      if (act.action === "done" || res?.result?.done) { doneFlag = true; break; }
-      await new Promise((r) => setTimeout(r, 350));
+      const r = res?.result || {};
+      emit({ type: "action", step, action: act, result: r });
+      history.push({ step, action: sanitizeAction(act), result: r });
+
+      // track per-field success/failure so we can retire dead fields
+      if (["type", "select"].includes(act.action) && act.targetId) {
+        if (r.ok && r.verified !== false) {
+          filledOk.add(act.targetId);
+          failedAttempts.delete(act.targetId);
+          progressed = true;
+        } else {
+          failedAttempts.set(act.targetId, (failedAttempts.get(act.targetId) || 0) + 1);
+        }
+      }
+      if (["click", "scroll"].includes(act.action) && r.ok) progressed = true;
+      if (act.action === "submit" && r.ok) didSubmit = true;
+
+      if (act.action === "done" || r.done) { doneFlag = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 350));
     }
+
     if (doneFlag || plan.done) { emit({ type: "done", step }); break; }
+    if (didSubmit) { stop(step, "form submitted"); break; }
+
+    // 10. Stagnation guard: nothing changed on the page this step.
+    stagnantSteps = progressed ? 0 : stagnantSteps + 1;
+    if (stagnantSteps >= MAX_STAGNANT_STEPS) {
+      stop(step, "no progress over consecutive steps");
+      break;
+    }
   }
 
   running = null;

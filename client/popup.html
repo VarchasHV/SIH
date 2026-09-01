@@ -11,7 +11,10 @@
   <header class="masthead">
     <div class="mark" aria-hidden="true">PL</div>
     <div>
-      <p class="kicker">ON-DEVICE VISION AGENT</p>
+      <div class="title-row">
+        <p class="kicker">ON-DEVICE VISION AGENT</p>
+        <span class="dpdp-badge" title="Digital Personal Data Protection Act 2023 / Rules 2025 Compliant">🇮🇳 DPDP 2023</span>
+      </div>
       <h1>Privacy Lens</h1>
     </div>
     <span class="status-dot" id="status-dot" title="Ready"></span>
@@ -25,11 +28,45 @@
 
   <!-- ASSIST ------------------------------------------------------------ -->
   <section class="panel is-active" id="tab-assist">
-    <label class="field">
-      <span>Task for the agent</span>
-      <textarea id="goal" rows="2" placeholder="e.g. Fill in this job application using my profile, but stop before submitting."></textarea>
-    </label>
-    <div class="preset-row" id="presets"></div>
+    <div class="mode-toggle" role="group" aria-label="How to describe the task">
+      <button type="button" class="mode is-active" id="mode-guided">Guided</button>
+      <button type="button" class="mode" id="mode-custom">Custom text</button>
+    </div>
+
+    <!-- GUIDED BUILDER: composes an intent-only goal — no literal values ever -->
+    <div id="goal-guided">
+      <fieldset class="gb-group">
+        <legend>What should the agent fill?</legend>
+        <label class="check"><input type="radio" name="gb-scope" value="all" checked /> Everything it can match from my profile</label>
+        <label class="check"><input type="radio" name="gb-scope" value="pick" /> Only the fields I pick</label>
+      </fieldset>
+
+      <fieldset class="gb-group" id="gb-fields" hidden>
+        <legend>Fields to fill</legend>
+        <div id="gb-field-list" class="gb-chips"></div>
+      </fieldset>
+
+      <fieldset class="gb-group">
+        <legend>When the form is complete</legend>
+        <label class="check"><input type="radio" name="gb-submit" value="stop" checked /> Stop before submitting (I'll review)</label>
+        <label class="check"><input type="radio" name="gb-submit" value="submit" /> Submit the form</label>
+      </fieldset>
+
+      <label class="field">
+        <span>Composed task (sent to the agent)</span>
+        <output id="gb-preview" class="gb-preview"></output>
+      </label>
+    </div>
+
+    <!-- CUSTOM TEXT: still DLP-scrubbed on-device before egress -->
+    <div id="goal-custom" hidden>
+      <label class="field">
+        <span>Task for the agent</span>
+        <textarea id="goal" rows="2" placeholder="e.g. Fill in this job application using my profile, but stop before submitting."></textarea>
+      </label>
+      <p class="hint">⚠ This text is DLP-scrubbed on-device before it leaves your machine. Don't type real names, emails or numbers here — put values in the <b>Profile</b> tab and refer to fields by name.</p>
+      <div class="preset-row" id="presets"></div>
+    </div>
 
     <details class="advanced">
       <summary>Settings</summary>
@@ -69,10 +106,46 @@
 
   <!-- ACTIVITY ------------------------------------------------------- -->
   <section class="panel" id="tab-activity">
+    <div id="security-hud" class="security-hud" hidden>
+      <div class="security-header">
+        <span class="shield-icon">🛡️</span>
+        <strong id="security-title">ADVERSARIAL INJECTION BLOCKED</strong>
+      </div>
+      <p id="security-desc" class="security-desc">Quarantined suspicious instructions on-device before egress.</p>
+      <ul id="security-threats" class="security-threats"></ul>
+    </div>
+
+    <div id="hybrid-hud" class="hybrid-hud" hidden>
+      <span class="hybrid-badge" id="hybrid-badge">⚡ HYBRID A11Y FAST-PATH</span>
+      <span class="hybrid-desc" id="hybrid-desc">ViT/OCR bypassed (100% structured A11y tree confidence)</span>
+    </div>
+
     <div class="egress" id="egress" hidden>
-      <p class="egress-label">Leaving this device this step</p>
-      <img id="egress-img" alt="redacted screenshot" />
+      <div class="egress-top">
+        <p class="egress-label">Leaving this device this step</p>
+        <div class="diff-toggle">
+          <button type="button" class="mini is-active" id="view-single">Redacted</button>
+          <button type="button" class="mini" id="view-diff">Raw vs Redacted Diff</button>
+        </div>
+      </div>
+      
+      <div id="egress-single-view">
+        <img id="egress-img" alt="redacted screenshot" />
+      </div>
+
+      <div id="egress-diff-view" class="diff-grid" hidden>
+        <div class="diff-col">
+          <span class="diff-tag raw">Raw (Local Only)</span>
+          <img id="diff-raw-img" alt="raw screenshot" />
+        </div>
+        <div class="diff-col">
+          <span class="diff-tag sanitized">Redacted (Egress)</span>
+          <img id="diff-redacted-img" alt="redacted screenshot" />
+        </div>
+      </div>
+
       <div class="egress-stats" id="egress-stats"></div>
+      <button type="button" class="ghost-button mini-btn" id="export-dpdp-btn" hidden>🇮🇳 Download DPDP 2023 Audit Log (.json)</button>
       <details><summary>Payload JSON</summary><pre id="egress-json"></pre></details>
     </div>
     <ol class="log" id="log"><li class="empty">Idle.</li></ol>

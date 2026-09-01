@@ -24,15 +24,76 @@
   }
 
   async function prepare() {
-    const { profile = {} } = await chrome.storage.local.get("profile");
+    const { profile = {}, allowInsecureHttp = false } = await chrome.storage.local.get(["profile", "allowInsecureHttp"]);
 
     const skeleton = window.__PL.buildSkeleton();
     const domPiiBoxes = window.__PL.domPiiBoxes();
+    const securityAlerts = [];
+
+    // 1. TLS Origin & Protocol Safety Check
+    const urlObj = new URL(location.href);
+    const isInsecureHttp = urlObj.protocol === "http:" && !["localhost", "127.0.0.1"].includes(urlObj.hostname);
+    if (isInsecureHttp && !allowInsecureHttp) {
+      securityAlerts.push({
+        type: "INSECURE_TLS_WARNING",
+        reason: `Unencrypted HTTP connection (${urlObj.hostname}). TLS Safety Net recommends HTTPS.`,
+        text: location.href,
+      });
+    }
+
+    // 2. Force Credential Isolation on password & auth fields
+    document.querySelectorAll("input[type='password'], input[autocomplete*='password']").forEach((pwEl) => {
+      const rect = pwEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        domPiiBoxes.push({
+          fieldId: pwEl.getAttribute("data-pl-id") || null,
+          category: "password",
+          confidence: 1.0,
+          bbox: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
+        });
+      }
+    });
+
+    // 3. Adversarial & Indirect Prompt Injection Scanning
+    if (window.AdversarialGuard && typeof window.AdversarialGuard.scanAdversarialVectors === "function") {
+      const threats = window.AdversarialGuard.scanAdversarialVectors(document);
+      for (const t of threats) {
+        securityAlerts.push({
+          type: t.type,
+          reason: t.reason,
+          text: t.text,
+          bbox: t.bbox,
+        });
+        // Quarantine: Add threat bbox to domPiiBoxes so it is 100% blacked out in offscreen vision
+        domPiiBoxes.push({
+          fieldId: null,
+          category: "adversarial_injection",
+          confidence: t.confidence || 1.0,
+          bbox: t.bbox,
+        });
+      }
+    }
 
     // Annotate nodes:
     // - High-risk secrets & credentials (RESTRICTED_PII_CATEGORIES / alwaysRedact) are marked isCensored: true
     // - If profile has local data for piiCategory, node.hasFill = true and node.fillToken = "local:<category>"
     for (const node of skeleton.nodes) {
+      // Quarantine adversarial text that may be in button/link/label text
+      if (window.AdversarialGuard?.detectPromptInjection) {
+        const textToCheck = `${node.label || ""} ${node.text || ""} ${node.name || ""}`;
+        const inj = window.AdversarialGuard.detectPromptInjection(textToCheck);
+        if (inj.isInjection) {
+          node.label = "[QUARANTINED_ADVERSARIAL_TEXT]";
+          node.text = "[QUARANTINED_ADVERSARIAL_TEXT]";
+          node.isCensored = true;
+          securityAlerts.push({
+            type: inj.threat || "INDIRECT_PROMPT_INJECTION",
+            reason: `Target ${node.id} text contained prompt injection: "${inj.match}"`,
+            bbox: node.bbox,
+          });
+        }
+      }
+
       const piiCat = node.piiCategory;
       const profileVal = piiCat ? resolveProfileValue(profile, piiCat) : null;
       const isRestricted = node.alwaysRedact || (piiCat && RESTRICTED_PII_CATEGORIES.has(piiCat));
@@ -57,7 +118,7 @@
         node.fillToken = null;
       }
     }
-    return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile) };
+    return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile), securityAlerts };
   }
 
   async function execute(action) {

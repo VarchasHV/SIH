@@ -1,4 +1,4 @@
-// Offscreen document: all on-device vision inference + pixel redaction.
+// Offscreen document: on-device vision inference + pixel redaction for Chrome MV3.
 // Kept off the page and the service worker so neither stalls.
 //
 //   in  : { screenshot(dataURL), domPiiBoxes(cssPx), fields[], dpr, mode }
@@ -189,7 +189,7 @@ const roundBox = (b) => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round
 
 chrome.runtime.onMessage.addListener((msg, _s, sendResponse) => {
   if (msg.action !== "PL_VISION") return;
-  process(msg.payload)
+  processVision(msg.payload)
     .then((r) => sendResponse({ ok: true, ...r }))
     .catch((e) => sendResponse({ ok: false, error: e.message, stack: e.stack }));
   return true;

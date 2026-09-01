@@ -360,6 +360,63 @@ export function sanitizeParagraphText(text) {
 }
 
 /**
+ * Sanitizes a free-form task goal typed by the user before it is transmitted to
+ * the remote VLM. The goal is *not* structured input we control, so users can
+ * (and do) paste literal PII into it — e.g. "Fill the form with John Smith,
+ * john@example.com, Aadhaar 1234 5678 9012". This is a DLP egress point and must
+ * be scrubbed like any other.
+ *
+ * Strategy:
+ *  1. Redact formatted PII (emails, phones, Aadhaar, PAN, cards, …) via the
+ *     shared paragraph scanner.
+ *  2. Redact value-carrying clauses. A goal only needs to express *intent*
+ *     ("fill the form using my local profile"); any concrete value that follows
+ *     a filler verb / assignment / quote is a literal the model must never see.
+ *  3. Hard length cap so a goal can't smuggle a large blob past the scanners.
+ *
+ * @param {string} goal
+ * @returns {{ text: string, redacted: boolean, hits: string[] }}
+ */
+export function sanitizeTaskGoal(goal) {
+  const hits = [];
+  if (!goal || typeof goal !== "string") {
+    return { text: "", redacted: false, hits };
+  }
+
+  let text = goal.replace(/\s+/g, " ").trim().slice(0, 600);
+  const before = text;
+
+  // 1. Formatted PII (emails, SSN, cards, Aadhaar, PAN, phones, …)
+  const afterPii = sanitizeParagraphText(text);
+  if (afterPii !== text) hits.push("formatted-pii");
+  text = afterPii;
+
+  // 2. Quoted literals — "John Smith", 'Flat 4B, MG Road'
+  text = text.replace(/(['"“”‘’])(.{1,120}?)\1/g, (_m) => {
+    hits.push("quoted-literal");
+    return "[TOKEN_VALUE]";
+  });
+
+  // 3. Values after a filler verb or assignment.
+  //    "fill name with John Smith" / "set email = x" / "DOB: 01/01/1990"
+  //    Capture up to the next clause boundary (comma / "and" / ";" / end).
+  const valueClause =
+    /\b(?:with|using|as|to|is|=|:)\s+(?!(?:my|the|a|an|your|this|that|it|local|profile|saved|stored|filled|empty|blank|complete|completed|done|possible|shown|visible|required|optional|needed)\b)([^,;]+?)(?=(?:,|;|\.|\band\b|\bthen\b|$))/gi;
+  text = text.replace(valueClause, (m, val) => {
+    // keep the connective word ("with" / "to" / ":"), redact only the value
+    const connective = m.slice(0, m.length - val.length);
+    hits.push("value-clause");
+    return `${connective}[TOKEN_VALUE]`;
+  });
+
+  // Tidy spacing left by clause-boundary lookaheads (e.g. "]and" -> "] and").
+  text = text.replace(/\](?=[A-Za-z0-9])/g, "] ").replace(/\s+/g, " ").trim();
+
+  const redacted = text !== before || hits.length > 0;
+  return { text, redacted, hits: [...new Set(hits)] };
+}
+
+/**
  * Checks if an image or file upload is sensitive based on attributes and nearby text.
  *
  * @param {Object} mediaSignals

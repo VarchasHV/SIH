@@ -5,6 +5,8 @@
   "description": "SIH26171 - Privacy-preserving on-device vision agent for browser form-filling",
   "type": "module",
   "scripts": {
+    "build": "node scripts/fetch-vendor.mjs",
+    "setup": "npm run fetch:vendor && npm run server:install",
     "fetch:vendor": "node scripts/fetch-vendor.mjs",
     "fixtures": "node scripts/serve.mjs fixtures 4173",
     "serve": "node scripts/serve.mjs . 4173",
@@ -15,8 +17,9 @@
     "bench:full": ".venv/bin/python3 benchmarks/run_bench.py --n 20000",
     "bench:live": ".venv/bin/python3 benchmarks/run_bench.py --n 5000 --live-vlm",
     "bench:json": ".venv/bin/python3 benchmarks/run_bench.py --n 5000 --json",
-    "server": "python3 -m uvicorn main:app --app-dir server --reload --port 8000",
-    "server:install": "python3 -m pip install -r server/requirements.txt"
+    "eval:agent": "node eval/agent-eval.mjs",
+    "server": ".venv/bin/python -m uvicorn main:app --app-dir server --reload --reload-dir server --port 8000",
+    "server:install": ".venv/bin/pip install -r server/requirements.txt"
   },
   "devDependencies": {}
 }
