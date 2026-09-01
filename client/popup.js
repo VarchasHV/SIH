@@ -273,7 +273,7 @@ chrome.runtime.onMessage.addListener((m) => {
     }
     case "error": log(`error [${e.where || ""}]: ${e.message}`, "err"); break;
     case "submit-skipped": log("submit skipped by user"); break;
-    case "done": log(`✔ task complete (step ${e.step})`, "ok"); break;
+    case "done": log(`✔ task complete (step ${e.step})${e.reason ? ` — ${e.reason}` : ""}`, "ok"); break;
     case "cancelled": log("cancelled", "err"); break;
     case "finished":
       setBusy(false);

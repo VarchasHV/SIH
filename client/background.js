@@ -24,10 +24,29 @@ const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
 const DEFAULTS = {
   serverUrl: "http://localhost:8000",
   redactionMode: "blackout",
-  maxSteps: 12,
+  maxSteps: 8,
   confirmEachSend: false,
   confirmBeforeSubmit: true,
 };
+
+// Loop-termination tuning. The agent must converge, not spin.
+const MAX_FIELD_ATTEMPTS = 2;   // give up on a field after this many failed fills
+const MAX_STAGNANT_STEPS = 2;   // stop after this many steps with zero new fills
+
+const wantsSubmit = (goal) =>
+  /\b(submit|and submit|complete and submit|send the form)\b/i.test(goal) &&
+  !/\b(don'?t submit|do not submit|stop before submit(ting)?|without submitting|no submit)\b/i.test(goal);
+
+const planSignature = (actions) =>
+  (actions || []).map((a) => `${a.action}:${a.targetId || a.ms || ""}`).join("|");
+
+// Can the agent actually act on this node? (empty, on-screen, and we have a way to fill it)
+function isActionable(n, isDead) {
+  if (!n.visible || n.state !== "empty" || n.skip || isDead(n.id)) return false;
+  if (["input", "textarea"].includes(n.tag)) return !!(n.hasFill || n.fillToken);
+  if (n.tag === "select") return Array.isArray(n.options) && n.options.length > 0;
+  return false;
+}
 
 // ---- legacy "scan" path (unchanged behaviour for the old popup button) ----
 async function scanActiveTab() {
@@ -144,6 +163,17 @@ async function runAgentTask(opts) {
   const history = [];
   let sanitizedPayloadForPreview = null;
 
+  // ---- convergence trackers ----
+  const filledOk = new Set();          // targetIds we successfully filled + verified
+  const failedAttempts = new Map();    // targetId -> failed fill count
+  const isDead = (id) => (failedAttempts.get(id) || 0) >= MAX_FIELD_ATTEMPTS;
+  let stagnantSteps = 0;
+  let prevPlanSig = null;
+  let didSubmit = false;
+  const goalWantsSubmit = wantsSubmit(safeGoal.text);
+
+  const stop = (step, reason) => { emit({ type: "done", step, reason }); };
+
   for (let step = 1; step <= cfg.maxSteps; step++) {
     if (running.cancel) { emit({ type: "cancelled", step }); break; }
     emit({ type: "step-start", step });
@@ -206,10 +236,41 @@ async function runAgentTask(opts) {
       };
     });
 
+    // 4b. Retire fields we've already tried and failed to fill, so the model
+    //     stops proposing them every step (the #1 cause of the loop spinning).
+    for (const n of sanitizedNodes) {
+      if (n.state === "empty" && isDead(n.id)) {
+        n.state = "readonly";
+        n.skip = true;
+      }
+    }
+
     const sanitizedSkeleton = {
       ...prep.skeleton,
       nodes: sanitizedNodes,
     };
+
+    // 4c. Local completion check — if there is nothing the agent can still do,
+    //     stop now instead of burning steps asking the model to invent work.
+    const actionable = sanitizedNodes.filter((n) => isActionable(n, isDead));
+    const submitBtn = sanitizedNodes.find(
+      (n) => n.visible && (n.isSubmit || n.tag === "button" || n.role === "button"),
+    );
+    if (actionable.length === 0) {
+      if (goalWantsSubmit && submitBtn && !didSubmit) {
+        // fall through — let the agent press submit this step
+      } else if (filledOk.size === 0 && step === 1) {
+        // page may still be mounting (SPA); give it one grace cycle before giving up
+        emit({ type: "step-start", step: step + 0.5 });
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        continue;
+      } else {
+        stop(step, filledOk.size
+          ? "all fillable fields handled"
+          : "no fields could be filled — add values in the Profile tab");
+        break;
+      }
+    }
 
     // 5. Sanitized payload sent to server — zero PII, zero raw secret values
     const payload = {
@@ -218,7 +279,7 @@ async function runAgentTask(opts) {
       skeleton: sanitizedSkeleton,
       visionDetections: [], // Never send PII category names/locations to the LLM
       screenshot: vis.redactedDataURL,
-      history: history.slice(-4),
+      history: history.slice(-8),
     };
     sanitizedPayloadForPreview = { ...payload, screenshot: "<blacked-out image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
 
@@ -261,8 +322,19 @@ async function runAgentTask(opts) {
       continue;
     }
 
+    // 8b. Repeat-plan guard: if the model returns the exact same non-terminal
+    //     plan two steps running, it is stuck — stop rather than spin.
+    const planSig = planSignature(v.actions);
+    const terminalPlan = v.actions.some((a) => a.action === "submit" || a.action === "done");
+    if (planSig && planSig === prevPlanSig && !terminalPlan) {
+      stop(step, "agent repeated the same plan with no progress");
+      break;
+    }
+    prevPlanSig = planSig;
+
     // 9. execute
     let doneFlag = false;
+    let progressed = false; // any state-changing action landed this step
     for (const act of v.actions) {
       if (act.action === "submit" && cfg.confirmBeforeSubmit) {
         const ok = await waitForGate(`submit-${step}`, "submit");
@@ -281,12 +353,36 @@ async function runAgentTask(opts) {
       }
       send(tabId, { action: "PL_HIGHLIGHT", regions: targetNode ? [targetNode.bbox] : [], kind: "target" }).catch(() => {});
       const res = await send(tabId, { action: "PL_EXECUTE", step: act });
-      emit({ type: "action", step, action: act, result: res?.result });
-      history.push({ step, action: sanitizeAction(act), result: res?.result });
-      if (act.action === "done" || res?.result?.done) { doneFlag = true; break; }
-      await new Promise((r) => setTimeout(r, 350));
+      const r = res?.result || {};
+      emit({ type: "action", step, action: act, result: r });
+      history.push({ step, action: sanitizeAction(act), result: r });
+
+      // track per-field success/failure so we can retire dead fields
+      if (["type", "select"].includes(act.action) && act.targetId) {
+        if (r.ok && r.verified !== false) {
+          filledOk.add(act.targetId);
+          failedAttempts.delete(act.targetId);
+          progressed = true;
+        } else {
+          failedAttempts.set(act.targetId, (failedAttempts.get(act.targetId) || 0) + 1);
+        }
+      }
+      if (["click", "scroll"].includes(act.action) && r.ok) progressed = true;
+      if (act.action === "submit" && r.ok) didSubmit = true;
+
+      if (act.action === "done" || r.done) { doneFlag = true; break; }
+      await new Promise((resolve) => setTimeout(resolve, 350));
     }
+
     if (doneFlag || plan.done) { emit({ type: "done", step }); break; }
+    if (didSubmit) { stop(step, "form submitted"); break; }
+
+    // 10. Stagnation guard: nothing changed on the page this step.
+    stagnantSteps = progressed ? 0 : stagnantSteps + 1;
+    if (stagnantSteps >= MAX_STAGNANT_STEPS) {
+      stop(step, "no progress over consecutive steps");
+      break;
+    }
   }
 
   running = null;

@@ -167,11 +167,19 @@ def _openai(req: StepRequest) -> StepResponse:
 # --------------------------------------------------------------------------
 def _mock(req: StepRequest) -> StepResponse:
     actions: list[Action] = []
+    # a field that was targeted before but is still empty has no local data — don't retry it
+    tried_empty = {
+        h.action.get("targetId")
+        for h in req.history
+        if h.action and h.action.get("action") in ("type", "select")
+    }
     handled = {h.action.get("targetId") for h in req.history if h.action}
     for node in req.skeleton.nodes:
         if len(actions) >= 4:
             break
-        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled:
+        if not node.visible or node.skip or node.state in ("filled", "readonly", "disabled"):
+            continue
+        if node.id in handled or node.id in tried_empty:
             continue
         if node.isCensored:
             if node.hasFill:
@@ -180,8 +188,11 @@ def _mock(req: StepRequest) -> StepResponse:
                                       reason=f"fill tokenized field via local token {token}"))
         else:
             if node.tag in ("input", "textarea"):
+                # only fill if the client resolved a local value for this field
+                if not (node.hasFill or node.fillToken):
+                    continue
                 category = node.piiCategory or "full name"
-                actions.append(Action(action="type", targetId=node.id, piiCategory=category, fillToken=f"local:{category}",
+                actions.append(Action(action="type", targetId=node.id, piiCategory=category, fillToken=node.fillToken or f"local:{category}",
                                       reason=f"fill {category} from local profile"))
             elif node.tag == "select" and node.options:
                 opt = next((o for o in node.options if o.get("label", "").strip().lower() in ("india", "in", "male", "female", "mr", "mrs", "ms")), node.options[0] if node.options else None)

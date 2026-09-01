@@ -123,7 +123,7 @@ async function runFixture(file) {
     const t0 = performance.now();
     let res;
     try {
-      res = await step({ taskGoal: goal, step: s, skeleton, visionDetections: [], screenshot: null, history: history.slice(-4) });
+      res = await step({ taskGoal: goal, step: s, skeleton, visionDetections: [], screenshot: null, history: history.slice(-8) });
     } catch (e) {
       return { file, error: e.message };
     }
