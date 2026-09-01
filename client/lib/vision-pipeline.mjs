@@ -11,6 +11,7 @@ import { mergeDetections, redundancyStats } from "./merge.mjs";
 import { associateLabels } from "./label-assoc.mjs";
 import { isSensitiveCategory } from "./sensitive-fields.mjs";
 import { detectObjects, visionModelInfo } from "./vision-transformer.mjs";
+import { detectPromptInjection } from "./adversarial-guard.mjs";
 
 const getRuntimeUrl = (p) => {
   if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
@@ -105,6 +106,7 @@ async function runOCR(bitmap) {
   }
   const dets = [];
   for (const line of lines) {
+    // 1. Scan for PII text
     for (const hit of detectPII(line.text)) {
       const b = line.bbox;
       const width = b.x1 - b.x0;
@@ -115,6 +117,18 @@ async function runOCR(bitmap) {
         confidence: hit.confidence,
         source: "ocr",
         bbox: { x: b.x0 + cs * width, y: b.y0, w: (ce - cs) * width, h: b.y1 - b.y0 },
+      });
+    }
+
+    // 2. Scan for Indirect Prompt Injection text
+    const inj = detectPromptInjection(line.text);
+    if (inj.isInjection) {
+      const b = line.bbox;
+      dets.push({
+        category: "adversarial_injection",
+        confidence: inj.confidence || 0.95,
+        source: "ocr_injection_guard",
+        bbox: { x: b.x0, y: b.y0, w: b.x1 - b.x0, h: b.y1 - b.y0 },
       });
     }
   }

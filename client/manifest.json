@@ -29,6 +29,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "lib/sensitive-fields.js",
+        "lib/adversarial-guard.js",
         "dlp-content-script.js",
         "content.js",
         "skeleton.js",

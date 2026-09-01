@@ -69,9 +69,39 @@
 
   <!-- ACTIVITY ------------------------------------------------------- -->
   <section class="panel" id="tab-activity">
+    <div id="security-hud" class="security-hud" hidden>
+      <div class="security-header">
+        <span class="shield-icon">🛡️</span>
+        <strong id="security-title">ADVERSARIAL INJECTION BLOCKED</strong>
+      </div>
+      <p id="security-desc" class="security-desc">Quarantined suspicious instructions on-device before egress.</p>
+      <ul id="security-threats" class="security-threats"></ul>
+    </div>
+
     <div class="egress" id="egress" hidden>
-      <p class="egress-label">Leaving this device this step</p>
-      <img id="egress-img" alt="redacted screenshot" />
+      <div class="egress-top">
+        <p class="egress-label">Leaving this device this step</p>
+        <div class="diff-toggle">
+          <button type="button" class="mini is-active" id="view-single">Redacted</button>
+          <button type="button" class="mini" id="view-diff">Raw vs Redacted Diff</button>
+        </div>
+      </div>
+      
+      <div id="egress-single-view">
+        <img id="egress-img" alt="redacted screenshot" />
+      </div>
+
+      <div id="egress-diff-view" class="diff-grid" hidden>
+        <div class="diff-col">
+          <span class="diff-tag raw">Raw (Local Only)</span>
+          <img id="diff-raw-img" alt="raw screenshot" />
+        </div>
+        <div class="diff-col">
+          <span class="diff-tag sanitized">Redacted (Egress)</span>
+          <img id="diff-redacted-img" alt="redacted screenshot" />
+        </div>
+      </div>
+
       <div class="egress-stats" id="egress-stats"></div>
       <details><summary>Payload JSON</summary><pre id="egress-json"></pre></details>
     </div>

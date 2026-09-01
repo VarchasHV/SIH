@@ -29,10 +29,47 @@
     const skeleton = window.__PL.buildSkeleton();
     const domPiiBoxes = window.__PL.domPiiBoxes();
 
+    // Adversarial & Indirect Prompt Injection Scanning
+    const securityAlerts = [];
+    if (window.AdversarialGuard && typeof window.AdversarialGuard.scanAdversarialVectors === "function") {
+      const threats = window.AdversarialGuard.scanAdversarialVectors(document);
+      for (const t of threats) {
+        securityAlerts.push({
+          type: t.type,
+          reason: t.reason,
+          text: t.text,
+          bbox: t.bbox,
+        });
+        // Quarantine: Add threat bbox to domPiiBoxes so it is 100% blacked out in offscreen vision
+        domPiiBoxes.push({
+          fieldId: null,
+          category: "adversarial_injection",
+          confidence: t.confidence || 1.0,
+          bbox: t.bbox,
+        });
+      }
+    }
+
     // Annotate nodes:
     // - High-risk secrets (password, aadhaar, ssn, card number) are marked isCensored: true
     // - If profile has local data for piiCategory, node.hasFill = true and node.fillToken = "local:<category>"
     for (const node of skeleton.nodes) {
+      // Quarantine adversarial text that may be in button/link/label text
+      if (window.AdversarialGuard?.detectPromptInjection) {
+        const textToCheck = `${node.label || ""} ${node.text || ""} ${node.name || ""}`;
+        const inj = window.AdversarialGuard.detectPromptInjection(textToCheck);
+        if (inj.isInjection) {
+          node.label = "[QUARANTINED_ADVERSARIAL_TEXT]";
+          node.text = "[QUARANTINED_ADVERSARIAL_TEXT]";
+          node.isCensored = true;
+          securityAlerts.push({
+            type: inj.threat || "INDIRECT_PROMPT_INJECTION",
+            reason: `Target ${node.id} text contained prompt injection: "${inj.match}"`,
+            bbox: node.bbox,
+          });
+        }
+      }
+
       const piiCat = node.piiCategory;
       const profileVal = piiCat ? resolveProfileValue(profile, piiCat) : null;
 
@@ -55,7 +92,7 @@
         node.fillToken = null;
       }
     }
-    return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile) };
+    return { skeleton, domPiiBoxes, profileValues: profile, profileKeys: Object.keys(profile), securityAlerts };
   }
 
   async function execute(action) {

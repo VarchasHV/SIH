@@ -27,6 +27,7 @@ export const RESTRICTED_PII_CATEGORIES = new Set([
   "upi-vpa", "upi",
   "gstin", "GSTIN",
   "sensitive",
+  "adversarial_injection", "prompt_injection", "quarantined_threat", "steganographic_text",
 ]);
 
 export const CENSORED_CATEGORIES = RESTRICTED_PII_CATEGORIES;

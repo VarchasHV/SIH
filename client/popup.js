@@ -77,9 +77,51 @@ function log(text, cls = "") {
 }
 
 const egress = $("#egress");
+const securityHud = $("#security-hud");
+const threatsList = $("#security-threats");
+const viewSingleBtn = $("#view-single");
+const viewDiffBtn = $("#view-diff");
+const singleView = $("#egress-single-view");
+const diffView = $("#egress-diff-view");
+
+viewSingleBtn.addEventListener("click", () => {
+  viewSingleBtn.classList.add("is-active");
+  viewDiffBtn.classList.remove("is-active");
+  singleView.hidden = false;
+  diffView.hidden = true;
+});
+
+viewDiffBtn.addEventListener("click", () => {
+  viewDiffBtn.classList.add("is-active");
+  viewSingleBtn.classList.remove("is-active");
+  singleView.hidden = true;
+  diffView.hidden = false;
+});
+
 function showEgress(evt) {
   egress.hidden = false;
   $("#egress-img").src = evt.redactedImage;
+  $("#diff-redacted-img").src = evt.redactedImage;
+  if (evt.rawImage) {
+    $("#diff-raw-img").src = evt.rawImage;
+  }
+
+  // Render Security Alert HUD if any adversarial injections were detected and blocked
+  const alerts = evt.securityAlerts || [];
+  if (alerts.length > 0) {
+    securityHud.hidden = false;
+    $("#security-title").textContent = `🛡️ ${alerts.length} ADVERSARIAL INJECTION${alerts.length > 1 ? "S" : ""} BLOCKED`;
+    threatsList.replaceChildren();
+    alerts.forEach((a) => {
+      const li = document.createElement("li");
+      li.textContent = `[${a.type}] ${a.reason || a.text || "Malicious instruction quarantined"}`;
+      threatsList.appendChild(li);
+    });
+    log(`🛡️ Blocked ${alerts.length} adversarial injection vector(s)`, "err");
+  } else {
+    securityHud.hidden = true;
+  }
+
   const s = evt.visionStats || {};
   const t = evt.timings || {};
   const v = s.vit || {};
@@ -92,7 +134,7 @@ function showEgress(evt) {
   $("#egress-stats").textContent =
     `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · ViT ${t.vitMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
     `regions blacked out: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
-    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}\n` +
+    `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}${alerts.length ? ` · 🛡️ threats quarantined: ${alerts.length}` : ""}\n` +
     vitLine;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
 }

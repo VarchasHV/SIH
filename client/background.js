@@ -86,7 +86,7 @@ async function executeVision(payload, tries = 3) {
 async function injectAgentScripts(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ["lib/sensitive-fields.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
+    files: ["lib/sensitive-fields.js", "lib/adversarial-guard.js", "dlp-content-script.js", "content.js", "skeleton.js", "executor.js", "agent-bridge.js", "dom-redactor.js"],
   });
 }
 
@@ -204,7 +204,9 @@ async function runAgentTask(opts) {
       type: "egress",
       step,
       payloadPreview: sanitizedPayloadForPreview,
+      rawImage: shot,
       redactedImage: vis.redactedDataURL,
+      securityAlerts: prep.securityAlerts || [],
       visionStats: vis.stats,
       timings: vis.timings,
     });

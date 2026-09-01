@@ -67,9 +67,27 @@ hr { border: none; border-top: 1px solid var(--line); margin: 14px 0 10px; }
 .log li.err { color: var(--coral); }
 .log li.ok { color: #2f8f5b; }
 
+.security-hud { margin-bottom: 12px; padding: 10px; border: 1.5px solid #d93829; background: #fff0ee; border-radius: 2px; }
+.security-header { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #d93829; font-weight: 700; }
+.shield-icon { font-size: 14px; }
+.security-desc { margin: 4px 0 6px; font-size: 10px; color: var(--ink); line-height: 1.4; }
+.security-threats { margin: 0; padding-left: 16px; font: 9.5px 'DM Mono', monospace; color: #b3261e; }
+.security-threats li { margin-bottom: 3px; }
+
 .egress { margin-bottom: 10px; padding: 10px; border: 1px solid var(--ink); background: var(--cream); }
-.egress-label { margin: 0 0 6px; font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; color: var(--coral); }
+.egress-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.egress-label { margin: 0; font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; color: var(--coral); }
+.diff-toggle { display: flex; gap: 4px; }
+.diff-toggle .mini { padding: 3px 6px; font-size: 9.5px; border: 1px solid var(--line); background: var(--paper); cursor: pointer; }
+.diff-toggle .mini.is-active { background: var(--ink); color: var(--cream); border-color: var(--ink); }
+
 .egress img { width: 100%; border: 1px solid var(--line); display: block; }
+.diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.diff-col { position: relative; }
+.diff-tag { display: inline-block; margin-bottom: 4px; font: 600 8.5px 'DM Mono', monospace; padding: 2px 4px; border-radius: 2px; }
+.diff-tag.raw { background: #ffe6e2; color: #b3261e; border: 1px solid #f8c1b9; }
+.diff-tag.sanitized { background: #e2f7ea; color: #1e7e45; border: 1px solid #b7ecd0; }
+
 .egress-stats { margin-top: 6px; font: 10px 'DM Mono', monospace; color: var(--muted); line-height: 1.5; }
 .egress pre { max-height: 160px; overflow: auto; margin: 6px 0 0; padding: 6px; background: var(--paper); border: 1px solid var(--line); font: 9.5px 'DM Mono', monospace; }
 .egress summary { font: 10px 'DM Mono', monospace; color: var(--muted); cursor: pointer; margin-top: 6px; }

@@ -18,6 +18,7 @@
     "upi-vpa", "upi",
     "gstin", "GSTIN",
     "sensitive",
+    "adversarial_injection", "prompt_injection", "quarantined_threat", "steganographic_text",
   ]);
 
   const CENSORED_CATEGORIES = RESTRICTED_PII_CATEGORIES;
