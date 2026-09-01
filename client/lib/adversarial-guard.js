@@ -103,7 +103,10 @@
       }
     }
 
-    if (/(?:^|\n)\s*(?:system|assistant|instruction|human)\s*:\s*\w+/i.test(normalized)) {
+    // 4. Heuristic: fake role injection headers.
+    // Requires an adversarial payload verb immediately following the role tag to avoid
+    // false positives on benign forms like "instruction: enter your name" or "human: thanks".
+    if (/(?:^|\n)\s*(?:system|assistant|instruction|human)\s*:\s*(?:ignore|disregard|forget|bypass|exfiltrate|leak|steal|override|jailbreak|act\s+as|pretend|you\s+are)/i.test(normalized)) {
       return {
         isInjection: true,
         match: "Fake role tag spoofing",
@@ -219,28 +222,30 @@
         continue;
       }
 
-      // 3. Performance Optimization: Short-circuit getComputedStyle()
+      // 3. Steganographic hidden-text: short-circuit via inline style, then require confirmed injection.
       const inlineStyle = el.getAttribute?.("style") || "";
-      const styleMayBeHidden = /(?:opacity\s*:|font-size\s*:\s*0|position\s*:\s*absolute|left\s*:\s*-\d|top\s*:\s*-\d|display\s*:\s*none|visibility\s*:\s*hidden|overflow\s*:\s*hidden|clip\s*:)/i.test(inlineStyle);
-      const hasSuspiciousKeywords = SUSPICIOUS_KEYWORDS_REGEX.test(text);
+      const styleMayBeHidden = /(?:opacity\s*:\s*0|font-size\s*:\s*0|position\s*:\s*absolute|left\s*:\s*-\d|top\s*:\s*-\d|display\s*:\s*none|visibility\s*:\s*hidden)/i.test(inlineStyle);
 
-      if (styleMayBeHidden || hasSuspiciousKeywords) {
+      if (styleMayBeHidden) {
         const hiddenCheck = detectHiddenStyles(el, win);
-        if (hiddenCheck.isHidden && hasSuspiciousKeywords) {
-          const bbox = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
-          threats.push({
-            node: el,
-            type: "STEGANOGRAPHIC_HIDDEN_TEXT",
-            reason: hiddenCheck.reason,
-            text: text.slice(0, 150),
-            confidence: hiddenCheck.confidence,
-            bbox: {
-              x: Math.max(0, bbox.left ?? bbox.x ?? 0),
-              y: Math.max(0, bbox.top ?? bbox.y ?? 0),
-              w: Math.max(1, bbox.width ?? 0),
-              h: Math.max(1, bbox.height ?? 0),
-            },
-          });
+        if (hiddenCheck.isHidden) {
+          const hiddenInjectionCheck = detectPromptInjection(text);
+          if (hiddenInjectionCheck.isInjection) {
+            const bbox = typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 };
+            threats.push({
+              node: el,
+              type: "HIDDEN_PROMPT_INJECTION",
+              reason: hiddenCheck.reason + ` + Injection: "${hiddenInjectionCheck.match}"`,
+              text: text.slice(0, 150),
+              confidence: Math.min(hiddenCheck.confidence, hiddenInjectionCheck.confidence) + 0.02,
+              bbox: {
+                x: Math.max(0, bbox.left ?? bbox.x ?? 0),
+                y: Math.max(0, bbox.top ?? bbox.y ?? 0),
+                w: Math.max(1, bbox.width ?? 0),
+                h: Math.max(1, bbox.height ?? 0),
+              },
+            });
+          }
         }
       }
     }
