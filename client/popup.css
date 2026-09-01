@@ -36,6 +36,17 @@ h1 { margin: 2px 0 0; font-size: 19px; line-height: 1; }
 .field textarea { resize: vertical; }
 .check { display: flex; align-items: center; gap: 7px; margin: 6px 0; font-size: 11px; color: var(--muted); }
 
+.mode-toggle { display: flex; gap: 4px; margin-bottom: 12px; }
+.mode { flex: 1; padding: 6px 4px; border: 1px solid var(--line); background: var(--cream); font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; color: var(--muted); cursor: pointer; }
+.mode.is-active { border-color: var(--ink); background: var(--mint); color: var(--ink); }
+
+.gb-group { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--line); background: var(--cream); }
+.gb-group legend { padding: 0 4px; font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; color: var(--muted); }
+.gb-group .check { margin: 4px 0; }
+.gb-chips { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.gb-chips .check { margin: 2px 0; font-size: 10px; }
+.gb-preview { display: block; width: 100%; min-height: 34px; padding: 8px; border: 1px dashed var(--line); background: var(--cream); font: 11px 'DM Mono', monospace; line-height: 1.5; color: var(--ink); white-space: pre-wrap; }
+
 .preset-row { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 10px; }
 .preset { padding: 4px 8px; border: 1px solid var(--line); background: var(--cream); font: 10px 'DM Mono', monospace; cursor: pointer; }
 .preset:hover { border-color: var(--ink); }

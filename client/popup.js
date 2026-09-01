@@ -50,6 +50,62 @@ if (saveBtn) {
   });
 }
 
+// ---- guided goal builder --------------------------------------
+// Composes an intent-only task string. Field *names* only — never any value —
+// so nothing sensitive can reach the agent through the goal. (The composed
+// string is still DLP-scrubbed in the background as defense in depth.)
+const guidedWrap = $("#goal-guided");
+const customWrap = $("#goal-custom");
+const modeGuidedBtn = $("#mode-guided");
+const modeCustomBtn = $("#mode-custom");
+let goalMode = "guided";
+
+function setGoalMode(mode) {
+  goalMode = mode;
+  modeGuidedBtn.classList.toggle("is-active", mode === "guided");
+  modeCustomBtn.classList.toggle("is-active", mode === "custom");
+  guidedWrap.hidden = mode !== "guided";
+  customWrap.hidden = mode !== "custom";
+}
+modeGuidedBtn.addEventListener("click", () => setGoalMode("guided"));
+modeCustomBtn.addEventListener("click", () => setGoalMode("custom"));
+
+// field chips come from the same non-sensitive profile keys
+const gbFieldList = $("#gb-field-list");
+PROFILE_FIELDS.forEach(([key]) => {
+  const l = document.createElement("label");
+  l.className = "check";
+  l.innerHTML = `<input type="checkbox" data-field="${key}" /> ${key}`;
+  gbFieldList.appendChild(l);
+});
+
+function listPhrase(items) {
+  if (items.length === 1) return `${items[0]} field`;
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]} fields`;
+}
+
+function composeGuidedGoal() {
+  const scope = document.querySelector('input[name="gb-scope"]:checked')?.value || "all";
+  const submit = document.querySelector('input[name="gb-submit"]:checked')?.value || "stop";
+  let s = "Fill this form using my saved local profile.";
+  if (scope === "pick") {
+    const picked = [...gbFieldList.querySelectorAll("input:checked")].map((i) => i.dataset.field);
+    if (picked.length) s = `Fill this form using my saved local profile, but only the ${listPhrase(picked)}.`;
+  }
+  s += submit === "submit"
+    ? " Submit the form after every field has been filled."
+    : " Stop before submitting so I can review.";
+  return s;
+}
+
+function refreshGuided() {
+  const pickMode = document.querySelector('input[name="gb-scope"]:checked')?.value === "pick";
+  $("#gb-fields").hidden = !pickMode;
+  $("#gb-preview").textContent = composeGuidedGoal();
+}
+guidedWrap.addEventListener("change", refreshGuided);
+refreshGuided();
+
 // ---- presets ----------------------------------------------------
 const PRESETS = [
   "Fill this job application with my basic contact info. Stop before submitting.",
@@ -62,7 +118,7 @@ PRESETS.forEach((p) => {
   b.className = "preset";
   b.textContent = p.slice(0, 34) + "…";
   b.title = p;
-  b.addEventListener("click", () => ($("#goal").value = p));
+  b.addEventListener("click", () => { setGoalMode("custom"); $("#goal").value = p; });
   presetRow.appendChild(b);
 });
 
@@ -202,6 +258,9 @@ chrome.runtime.onMessage.addListener((m) => {
   const e = m.evt;
   switch (e.type) {
     case "step-start": log(`— step ${e.step} —`); break;
+    case "goal-redacted":
+      log(`goal scrubbed before egress (${e.hits.join(", ")}); sent: "${e.sanitized}"`, "err");
+      break;
     case "egress": showEgress(e); log(`censored with black boxes (step ${e.step})`); break;
     case "gate": showGate(e.id, e.kind); break;
     case "plan":
@@ -231,7 +290,7 @@ function setBusy(b) {
 }
 
 $("#run-button").addEventListener("click", () => {
-  const goal = $("#goal").value.trim();
+  const goal = goalMode === "guided" ? composeGuidedGoal() : $("#goal").value.trim();
   if (!goal) { $("#goal").focus(); return; }
   logEl.replaceChildren();
   egress.hidden = true;

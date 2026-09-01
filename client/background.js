@@ -5,7 +5,8 @@
 //   captureVisibleTab     -> raw screenshot
 //   vision (PL_VISION)    -> redacted screenshot (blackout) + vision detections
 //   filter                -> ALL redacted/sensitive fields are REMOVED from the skeleton
-//   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot
+//   goal    -> free-form task goal is DLP-scrubbed (sanitizeTaskGoal) before egress
+//   server  (/agent/step) -> receives ONLY unredacted skeleton + blacked-out screenshot + scrubbed goal
 //   content (PL_EXECUTE)  -> performs actions on unredacted fields only; strictly blocks censored fields
 //
 // The popup receives PL_PROGRESS events (including the exact egress payload) and
@@ -14,6 +15,7 @@
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
+import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
@@ -124,6 +126,15 @@ let running = null;
 
 async function runAgentTask(opts) {
   const cfg = { ...DEFAULTS, ...opts };
+
+  // DLP egress guard: the goal is free-form user text and is a common place for
+  // literal PII to leak to the remote VLM. Scrub it once, up front, and only
+  // ever transmit the sanitized form.
+  const safeGoal = sanitizeTaskGoal(cfg.goal);
+  if (safeGoal.redacted) {
+    emit({ type: "goal-redacted", original: cfg.goal, sanitized: safeGoal.text, hits: safeGoal.hits });
+  }
+
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   if (!tab?.id) throw new Error("No active tab.");
   const tabId = tab.id;
@@ -202,7 +213,7 @@ async function runAgentTask(opts) {
 
     // 5. Sanitized payload sent to server — zero PII, zero raw secret values
     const payload = {
-      taskGoal: cfg.goal,
+      taskGoal: safeGoal.text,
       step,
       skeleton: sanitizedSkeleton,
       visionDetections: [], // Never send PII category names/locations to the LLM

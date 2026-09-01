@@ -28,9 +28,30 @@ _SUBMIT_WORDS = re.compile(r"\b(submit|send the form|complete and submit|and sub
 _NO_SUBMIT_WORDS = re.compile(r"\b(don'?t submit|do not submit|stop before submit|without submitting|no submit)\b", re.I)
 
 
+# Defense-in-depth: the client scrubs the free-form goal before egress, but the
+# server must not trust that. Redact formatted PII from the goal before it ever
+# reaches the model or the logs.
+_GOAL_PII_RES = [
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),          # email
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),                                        # SSN
+    re.compile(r"(?<!\d)(?:\d[\s-]?){13,19}(?!\d)"),                             # card
+    re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)"),                     # Aadhaar
+    re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b"),                                       # PAN
+    re.compile(r"(?:\+?91[\s-]?)?[6-9]\d{9}\b"),                                 # phone (IN)
+    re.compile(r"\b[A-Z]{4}0[A-Z0-9]{6}\b"),                                     # IFSC
+]
+
+
+def _scrub_goal(goal: str) -> str:
+    out = (goal or "")[:600]
+    for rx in _GOAL_PII_RES:
+        out = rx.sub("[REDACTED]", out)
+    return out
+
+
 def _context_json(req: StepRequest) -> str:
     return json.dumps({
-        "taskGoal": req.taskGoal,
+        "taskGoal": _scrub_goal(req.taskGoal),
         "step": req.step,
         "skeleton": req.skeleton.model_dump(exclude_none=True),
         "visionDetections": [d.model_dump() for d in req.visionDetections],

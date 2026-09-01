@@ -28,11 +28,45 @@
 
   <!-- ASSIST ------------------------------------------------------------ -->
   <section class="panel is-active" id="tab-assist">
-    <label class="field">
-      <span>Task for the agent</span>
-      <textarea id="goal" rows="2" placeholder="e.g. Fill in this job application using my profile, but stop before submitting."></textarea>
-    </label>
-    <div class="preset-row" id="presets"></div>
+    <div class="mode-toggle" role="group" aria-label="How to describe the task">
+      <button type="button" class="mode is-active" id="mode-guided">Guided</button>
+      <button type="button" class="mode" id="mode-custom">Custom text</button>
+    </div>
+
+    <!-- GUIDED BUILDER: composes an intent-only goal — no literal values ever -->
+    <div id="goal-guided">
+      <fieldset class="gb-group">
+        <legend>What should the agent fill?</legend>
+        <label class="check"><input type="radio" name="gb-scope" value="all" checked /> Everything it can match from my profile</label>
+        <label class="check"><input type="radio" name="gb-scope" value="pick" /> Only the fields I pick</label>
+      </fieldset>
+
+      <fieldset class="gb-group" id="gb-fields" hidden>
+        <legend>Fields to fill</legend>
+        <div id="gb-field-list" class="gb-chips"></div>
+      </fieldset>
+
+      <fieldset class="gb-group">
+        <legend>When the form is complete</legend>
+        <label class="check"><input type="radio" name="gb-submit" value="stop" checked /> Stop before submitting (I'll review)</label>
+        <label class="check"><input type="radio" name="gb-submit" value="submit" /> Submit the form</label>
+      </fieldset>
+
+      <label class="field">
+        <span>Composed task (sent to the agent)</span>
+        <output id="gb-preview" class="gb-preview"></output>
+      </label>
+    </div>
+
+    <!-- CUSTOM TEXT: still DLP-scrubbed on-device before egress -->
+    <div id="goal-custom" hidden>
+      <label class="field">
+        <span>Task for the agent</span>
+        <textarea id="goal" rows="2" placeholder="e.g. Fill in this job application using my profile, but stop before submitting."></textarea>
+      </label>
+      <p class="hint">⚠ This text is DLP-scrubbed on-device before it leaves your machine. Don't type real names, emails or numbers here — put values in the <b>Profile</b> tab and refer to fields by name.</p>
+      <div class="preset-row" id="presets"></div>
+    </div>
 
     <details class="advanced">
       <summary>Settings</summary>
