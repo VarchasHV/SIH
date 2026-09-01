@@ -136,6 +136,9 @@ const CTX = {
   ssn: /\b(ssn|social security)\b/i,
   ipv4: /\b(ip|address|server|host|dns|gateway|subnet|router|ping|localhost|port)\b/i,
   dob: /\b(dob|d\.?o\.?b|date of birth|born|birth ?date|birthday|age)\b/i,
+  otp: /\b(otp|2fa|mfa|totp|code|verification|passcode|one-time|security code|authenticator)\b/i,
+  credential: /\b(bearer|token|apikey|api[ -]?key|secret|password|passwd|ssh-rsa|private key)\b/i,
+  "ssh-key": /\b(private key|ssh|rsa|ed25519|openssh|dsa)\b/i,
   email: /./,
 };
 const NEGATIVE_CTX = {
@@ -144,9 +147,11 @@ const NEGATIVE_CTX = {
   "credit-card": /\b(imei|order|invoice|awb|tracking|sku|batch|manifest|serial|ticket)\b/i,
   pan: /\b(licen[sc]e|serial|sku|product|model|coupon|voucher|batch|api ?key|order|invoice)\b/i,
   "vehicle-reg": /\b(order|invoice|sku|coupon|voucher|batch|part|manifest|docket)\b/i,
+  otp: /\b(phone|tel|zip|postal|order|invoice|ref|id|amount|price|qty|item|port)\b/i,
 };
 
 function hasCtx(norm, start, end, re, window = 40) {
+  if (!re) return false;
   const before = norm.slice(Math.max(0, start - window), start);
   const after = norm.slice(end, end + window);
   return re.test(before) || re.test(after);
@@ -175,6 +180,10 @@ const RULES = [
   { category: "ssn", re: /\b\d{3}-\d{2}-\d{4}\b/g, base: 0.3, gate: true, validate: (m) => SSN_VALID(m[0]) },
   { category: "ipv4", re: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g, base: 0.45, gate: false, softGate: true },
   { category: "dob", re: /\b(?:0?[1-9]|[12]\d|3[01])[/\-.](?:0?[1-9]|1[0-2])[/\-.](?:19|20)\d{2}\b/g, base: 0.3, gate: true },
+  // Auth tokens, API keys, credentials, 2FA/OTP codes, and SSH private keys:
+  { category: "otp", re: /\b(?:\d{6}|\d{8})\b/g, base: 0.25, gate: true },
+  { category: "credential", re: /\b(?:Bearer\s+[A-Za-z0-9._~+/-]+=*|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g, base: 0.95, gate: false },
+  { category: "ssh-key", re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g, base: 1.0, gate: false },
 ];
 
 // RBI bank-code prefixes (first 4 chars of an IFSC). Common set - extend freely.

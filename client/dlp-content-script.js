@@ -9,8 +9,12 @@
   // 1. DLP RULE DICTIONARY & SEMANTIC TOKENS
   // ═══════════════════════════════════════════════════════════════════════════
   const DLP_RULES = [
-    // ── Authentication & Secrets ──
+    // ── Authentication, Credentials & Secrets ──
     { category: "password", token: "[TOKEN_PASSWORD]", attrRegex: /\b(password|passwd|passcode|secret|pwd|pin|auth_key|api_key)\b/i, textRegex: null },
+    { category: "credential", token: "[TOKEN_CREDENTIAL]", attrRegex: /\b(credential|credentials|auth_token|token|session_token|access_token|security_key|auth_key|secret_key)\b/i, textRegex: /\b(Bearer\s+[A-Za-z0-9._~+/-]+=*|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/ },
+    { category: "otp", token: "[TOKEN_OTP_2FA]", attrRegex: /\b(otp|2fa|mfa|totp|auth_code|verification_code|one_time_code|sms_code)\b/i, textRegex: /(?:\b(?:otp|2fa|code|verification|totp)[^0-9\n]{0,15}?)\b\d{4,8}\b/i },
+    { category: "ssh_key", token: "[TOKEN_SSH_KEY]", attrRegex: /\b(ssh[_\s]?key|private[_\s]?key|id_rsa|id_ed25519)\b/i, textRegex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
+    { category: "api_key", token: "[TOKEN_API_KEY]", attrRegex: /\b(api[_\s]?key|apikey|secret[_\s]?key|client[_\s]?secret)\b/i, textRegex: /\b(?:sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})\b/ },
 
     // ── Government & National Identifiers ──
     { category: "ssn", token: "[TOKEN_SSN]", attrRegex: /\b(ssn|social[_\s]?security|soc[_\s]?sec|national[_\s]?insurance|sin[_\s]?number)\b/i, textRegex: /\b\d{3}-\d{2}-\d{4}\b/ },
@@ -57,6 +61,8 @@
 
   const SENSITIVE_MEDIA_REGEX = /\b(upload[_\s]?(id|doc|photo|file)|passport|driver[_\s]?license|govt[_\s]?id|identity|aadhaar|ssn|id[_\s]?card|proof[_\s]?of[_\s]?id|selfie|signature|profile[_\s]?photo)\b/i;
   const GENERIC_TEXT_PII_REGEX = [
+    /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g,
+    /\b(?:Bearer\s+[A-Za-z0-9._~+/-]+=*|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})\b/g,
     /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
     /\b\d{3}-\d{2}-\d{4}\b/g,
     /(?<!\d)\b(?:\d[\s-]?){13,19}\b(?!\d)/g,
@@ -69,10 +75,23 @@
   // 2. HEURISTIC FUNCTIONS
   // ═══════════════════════════════════════════════════════════════════════════
   function classifyField(signals) {
+    const isAutofill = !!(signals.isAutofilled || signals.autofilled);
     const type = (signals.type || "").toLowerCase();
-    if (type === "password") {
-      return { isSensitive: true, category: "password", token: "[TOKEN_PASSWORD]" };
+    const auto = (signals.autocomplete || "").toLowerCase();
+
+    if (isAutofill || type === "password" || /(password|one-time-code|webauthn|credential)/i.test(auto)) {
+      let cat = "password";
+      let tok = "[TOKEN_PASSWORD]";
+      if (auto === "one-time-code" || /\b(otp|2fa|mfa|totp)\b/i.test((signals.id || "") + " " + (signals.name || ""))) {
+        cat = "otp";
+        tok = "[TOKEN_OTP_2FA]";
+      } else if (/\b(token|key|secret|credential)\b/i.test((signals.id || "") + " " + (signals.name || ""))) {
+        cat = "credential";
+        tok = "[TOKEN_CREDENTIAL]";
+      }
+      return { isSensitive: true, category: cat, token: tok, alwaysRedact: true, isAutofilled: isAutofill };
     }
+
     if (type === "email") {
       return { isSensitive: true, category: "email", token: "[TOKEN_EMAIL]" };
     }
@@ -83,8 +102,8 @@
       signals.id || "",
       signals.name || "",
       signals.className || "",
-      signals.type || "",
-      signals.autocomplete || "",
+      type,
+      auto,
       signals.placeholder || "",
       signals.ariaLabel || "",
       signals.labelText || "",
@@ -92,7 +111,8 @@
 
     for (const rule of DLP_RULES) {
       if (rule.attrRegex && rule.attrRegex.test(combined)) {
-        return { isSensitive: true, category: rule.category, token: rule.token };
+        const isCred = ["password", "credential", "otp", "ssh_key", "api_key", "credit_card", "cvv", "ssn", "aadhaar", "pan"].includes(rule.category);
+        return { isSensitive: true, category: rule.category, token: rule.token, alwaysRedact: isCred };
       }
     }
     return { isSensitive: false, category: null, token: null };
@@ -114,8 +134,10 @@
     if (!el) return "";
     const id = el.getAttribute("id");
     if (id) {
-      const explicit = document.querySelector(`label[for="${CSS.escape(id)}"]`);
-      if (explicit && explicit.textContent.trim()) return explicit.textContent.trim();
+      try {
+        const explicit = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+        if (explicit && explicit.textContent.trim()) return explicit.textContent.trim();
+      } catch (e) {}
     }
     const enclosing = el.closest("label");
     if (enclosing) {
@@ -165,8 +187,19 @@
     const required = el.required || el.getAttribute("aria-required") === "true";
     const label = resolveLabel(el);
 
+    const isAutofill = !!(
+      (typeof isAutofilled === "function" && isAutofilled(el)) ||
+      (el.hasAttribute && (
+        el.hasAttribute("data-com-onepassword-filled") ||
+        el.hasAttribute("data-bitwarden-filled") ||
+        el.hasAttribute("data-lastpass-filled") ||
+        el.hasAttribute("data-pl-autofill") ||
+        el.hasAttribute("autofilled")
+      ))
+    );
+
     const classification = classifyField({
-      id, name, className, type, autocomplete, placeholder, ariaLabel, labelText: label
+      id, name, className, type, autocomplete, placeholder, ariaLabel, labelText: label, isAutofilled: isAutofill
     });
 
     let sanitizedValue = "";
@@ -176,14 +209,17 @@
       sanitizedValue = el.checked ? "checked" : "unchecked";
     }
 
+    const isAlwaysRedact = !!(classification.alwaysRedact || isAutofill);
+
     const field = {
       tag: tagName,
       type,
       id: id || undefined,
-      name: name || undefined,
-      label: label || undefined,
+      name: isAlwaysRedact ? undefined : (name || undefined),
+      label: isAlwaysRedact ? undefined : (label || undefined),
       required: required ? true : undefined,
       isSensitive: classification.isSensitive,
+      alwaysRedact: isAlwaysRedact || undefined,
       category: classification.category || undefined,
       value: sanitizedValue,
     };
@@ -253,48 +289,50 @@
       return attrs.join(" ");
     };
 
-    const render = (f) => {
-      const l = f.label ? `<label>${f.label}</label>` : "";
-      if (f.tag === "textarea") return `${l}<textarea ${f.id ? `id="${f.id}"` : ""} ${f.name ? `name="${f.name}"` : ""}>${f.value || ""}</textarea>`;
+    const renderFieldHtml = (f) => {
+      const labelPrefix = f.label ? `<label>${f.label}</label>` : "";
+      if (f.tag === "textarea") {
+        return `${labelPrefix}<textarea ${f.id ? `id="${f.id}"` : ""} ${f.name ? `name="${f.name}"` : ""}>${f.value || ""}</textarea>`;
+      }
       if (f.tag === "select") {
         const opts = (f.options || []).map((o) => `<option value="${o.value}">${o.text}</option>`).join("");
-        return `${l}<select ${f.id ? `id="${f.id}"` : ""} ${f.name ? `name="${f.name}"` : ""}>${opts}</select>`;
+        return `${labelPrefix}<select ${f.id ? `id="${f.id}"` : ""} ${f.name ? `name="${f.name}"` : ""}>${opts}</select>`;
       }
-      return `${l}<input ${formatAttrs(f)}/>`;
+      return `${labelPrefix}<input ${formatAttrs(f)}/>`;
     };
 
     for (const form of tree.forms) {
-      parts.push(`<form id="${form.formId}">${form.fields.map(render).join("")}</form>`);
+      const fieldsHtml = form.fields.map(renderFieldHtml).join("");
+      parts.push(`<form id="${form.formId}">${fieldsHtml}</form>`);
     }
-    if (tree.looseFields.length) {
-      parts.push(`<div class="loose-fields">${tree.looseFields.map(render).join("")}</div>`);
+
+    if (tree.looseFields.length > 0) {
+      const looseHtml = tree.looseFields.map(renderFieldHtml).join("");
+      parts.push(`<div class="loose-fields">${looseHtml}</div>`);
     }
+
     for (const p of tree.paragraphs) {
-      if (p.includes("[TOKEN_") || p.includes("[TEXT_REDACTED]")) parts.push(`<p>${p}</p>`);
+      if (p.includes("[TOKEN_") || p.includes("[TEXT_REDACTED]")) {
+        parts.push(`<p>${p}</p>`);
+      }
     }
+
     for (const img of tree.images) {
-      if (img.isSensitive) parts.push(`<img alt="[SENSITIVE_IMAGE_REDACTED]" src="[SENSITIVE_IMAGE_REDACTED]"/>`);
+      if (img.isSensitive) {
+        parts.push(`<img alt="[SENSITIVE_IMAGE_REDACTED]" src="[SENSITIVE_IMAGE_REDACTED]"/>`);
+      }
     }
+
     return parts.join("");
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 4. EXTENSION INTEGRATION
-  // ═══════════════════════════════════════════════════════════════════════════
   window.__PL = window.__PL || {};
-  window.__PL.DLPSanitizer = {
+  window.__PL.DLP = {
+    DLP_RULES,
+    classifyField,
+    sanitizeText,
+    sanitizeElement,
     extractCleanStructure,
     getCleanHtml,
-    sanitizeElement,
-    sanitizeText,
   };
-
-  chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
-    if (request.action === "PL_GET_DLP_SKELETON") {
-      const payload = extractCleanStructure(document);
-      const cleanHtml = getCleanHtml(document);
-      sendResponse({ ok: true, payload, cleanHtml });
-      return true;
-    }
-  });
 })();

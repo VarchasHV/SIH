@@ -1,9 +1,23 @@
 // Single source of truth for sensitive field categorization in the content script world.
 // Attaches definitions to window.__PL.
+//
+// ARCHITECTURE & SCOPE ISOLATION:
+// 1. RESTRICTED_PII_CATEGORIES (CENSORED_CATEGORIES): High-risk secrets (Aadhaar, PAN, SSN, Credit Cards, CVV,
+//    Passwords, Credentials, 2FA/OTP, Auth Tokens, API Keys, SSH Keys, Bank Accounts, Passports).
+//    These are marked `isCensored: true` and are STRICTLY BLOCKED from being sent to or filled by the LLM.
+//
+// 2. ALWAYS_REDACT_CATEGORIES: Credential and secret categories that must be unconditionally redacted in
+//    both the visual channel (solid blackout on canvas) and the structural DOM/skeleton channel regardless
+//    of classifier confidence score.
+//
+// 3. PROFILE_PII_CATEGORIES: Non-secret PII (Name, Email, Phone, Address, DOB, Gender, etc.).
 
 (function () {
   const RESTRICTED_PII_CATEGORIES = new Set([
     "password",
+    "credential", "credentials", "autofill_credential", "autofill",
+    "otp", "2fa", "mfa", "totp", "one-time-code",
+    "auth_token", "api_key", "secret", "ssh_key", "session_token", "access_token", "security_key",
     "aadhaar", "Aadhaar",
     "pan", "PAN",
     "ssn", "SSN",
@@ -21,6 +35,27 @@
   ]);
 
   const CENSORED_CATEGORIES = RESTRICTED_PII_CATEGORIES;
+
+  const ALWAYS_REDACT_CATEGORIES = new Set([
+    "password",
+    "credential", "credentials", "autofill_credential", "autofill",
+    "otp", "2fa", "mfa", "totp", "one-time-code",
+    "auth_token", "api_key", "secret", "ssh_key", "session_token", "access_token", "security_key",
+    "credit-card", "credit/debit card number", "credit_card", "debit_card", "card number",
+    "cvv", "CVV/security code", "cvc", "security code",
+    "aadhaar", "Aadhaar",
+    "pan", "PAN",
+    "ssn", "SSN",
+    "bank account information", "bank account", "account number",
+    "passport number", "passport", "passport-in",
+  ]);
+
+  const CREDENTIAL_CATEGORIES = new Set([
+    "password",
+    "credential", "credentials", "autofill_credential", "autofill",
+    "otp", "2fa", "mfa", "totp", "one-time-code",
+    "auth_token", "api_key", "secret", "ssh_key", "session_token", "access_token", "security_key",
+  ]);
 
   const PROFILE_PII_CATEGORIES = new Set([
     "first name", "firstname",
@@ -45,8 +80,11 @@
 
   const SENSITIVE_PATTERNS = new RegExp(
     [
-      // Auth & Credentials
+      // Auth, Credentials & Session Secrets
       "password", "passcode", "passwd", "\\bpwd\\b",
+      "credential", "credentials", "autofill",
+      "\\botp\\b", "\\b2fa\\b", "\\bmfa\\b", "\\btotp\\b", "one[\\s_]?time[\\s_]?code", "auth[\\s_]?code", "verification[\\s_]?code",
+      "auth[\\s_]?token", "api[\\s_]?key", "apikey", "ssh[\\s_]?key", "bearer", "access[\\s_]?token", "session[\\s_]?token", "secret[\\s_]?key",
 
       // Government & National Identifiers
       "aadhaar", "aadhar", "uidai", "\\buid\\b",
@@ -100,6 +138,29 @@
     return RESTRICTED_PII_CATEGORIES.has(cat);
   }
 
+  function isCredentialCategory(cat) {
+    if (!cat) return false;
+    return CREDENTIAL_CATEGORIES.has(cat);
+  }
+
+  function isAlwaysRedactCategory(cat) {
+    if (!cat) return false;
+    return ALWAYS_REDACT_CATEGORIES.has(cat);
+  }
+
+  function isAlwaysRedact(signals) {
+    if (!signals) return false;
+    if (signals.alwaysRedact) return true;
+    if (signals.isAutofilled || signals.autofilled) return true;
+    var type = String(signals.type || "").toLowerCase();
+    if (type === "password") return true;
+    var autocomplete = String(signals.autocomplete || "").toLowerCase();
+    if (/(password|one-time-code|webauthn)/i.test(autocomplete)) return true;
+    var cat = signals.category || signals.piiCategory;
+    if (cat && isAlwaysRedactCategory(cat)) return true;
+    return false;
+  }
+
   function isSensitiveCategory(cat) {
     if (!cat) return false;
     return RESTRICTED_PII_CATEGORIES.has(cat) || PROFILE_PII_CATEGORIES.has(cat) || SENSITIVE_PATTERNS.test(cat);
@@ -113,9 +174,14 @@
   window.__PL = window.__PL || {};
   window.__PL.RESTRICTED_PII_CATEGORIES = RESTRICTED_PII_CATEGORIES;
   window.__PL.CENSORED_CATEGORIES = CENSORED_CATEGORIES;
+  window.__PL.ALWAYS_REDACT_CATEGORIES = ALWAYS_REDACT_CATEGORIES;
+  window.__PL.CREDENTIAL_CATEGORIES = CREDENTIAL_CATEGORIES;
   window.__PL.PROFILE_PII_CATEGORIES = PROFILE_PII_CATEGORIES;
   window.__PL.SENSITIVE_PATTERNS = SENSITIVE_PATTERNS;
   window.__PL.isRestrictedCategory = isRestrictedCategory;
+  window.__PL.isCredentialCategory = isCredentialCategory;
+  window.__PL.isAlwaysRedactCategory = isAlwaysRedactCategory;
+  window.__PL.isAlwaysRedact = isAlwaysRedact;
   window.__PL.isSensitiveCategory = isSensitiveCategory;
   window.__PL.isSensitiveText = isSensitiveText;
 })();

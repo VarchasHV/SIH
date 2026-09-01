@@ -116,13 +116,17 @@ async function runAgentTask(opts) {
     const prep = await prepare(tabId);
     if (!prep?.ok) throw new Error(prep?.error || "prepare failed");
 
-    // 2. raw screenshot
+    // 2. raw screenshot strictly scoped to active tab & window (credential/session scope isolation)
+    const currentTab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!currentTab || !currentTab.active) {
+      throw new Error("Active tab focus lost: session scope isolation prevented background capture.");
+    }
     const shot = await chrome.tabs.captureVisibleTab(tab.windowId, { format: "png" });
 
     // 3. on-device vision + blackout redaction
     const fields = prep.skeleton.nodes
       .filter((n) => ["input", "textarea", "select"].includes(n.tag) && n.visible)
-      .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox }));
+      .map((n) => ({ id: n.id, piiCategory: n.piiCategory, bbox: n.bbox, alwaysRedact: n.alwaysRedact }));
     const vis = await callOffscreen({
       action: "PL_VISION",
       payload: { screenshot: shot, domPiiBoxes: prep.domPiiBoxes, fields, dpr: prep.skeleton.viewport.dpr, mode: "blackout" },
@@ -132,10 +136,10 @@ async function runAgentTask(opts) {
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 
-    // 4. SANITIZE SKELETON: PRESERVE CENSORED NODES WITH LOCAL FILL TOKENS, STRIP REAL DATA LEAKS
+    // 4. SANITIZE SKELETON: PRESERVE CENSORED/ALWAYS-REDACT NODES WITH LOCAL FILL TOKENS, STRIP REAL DATA LEAKS
     // The server sees element structure + isCensored: true + fillToken ("local:category"), with ZERO real values or label text.
     const sanitizedNodes = prep.skeleton.nodes.map((node) => {
-      if (node.isCensored) {
+      if (node.isCensored || node.alwaysRedact) {
         return {
           id: node.id,
           tag: node.tag,
@@ -144,6 +148,7 @@ async function runAgentTask(opts) {
           visible: node.visible,
           bbox: node.bbox,
           isCensored: true,
+          alwaysRedact: true,
           hasFill: !!node.hasFill,
           fillToken: node.fillToken || (node.piiCategory ? `local:${node.piiCategory}` : null),
           piiCategory: node.piiCategory || null,

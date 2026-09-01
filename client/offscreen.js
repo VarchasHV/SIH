@@ -9,7 +9,7 @@ import { detectPII } from "./lib/pii-rules.mjs";
 import { redactCanvas } from "./lib/redact.mjs";
 import { mergeDetections, redundancyStats } from "./lib/merge.mjs";
 import { associateLabels } from "./lib/label-assoc.mjs";
-import { isSensitiveCategory } from "./lib/sensitive-fields.mjs";
+import { isSensitiveCategory, isAlwaysRedactCategory, isCredentialCategory } from "./lib/sensitive-fields.mjs";
 
 const url = (p) => chrome.runtime.getURL(p);
 
@@ -119,13 +119,28 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
   // vision-derived field classifications for fields the DOM couldn't name
   const labelDets = fields.length ? associateLabels(ocr.lines || [], fields, dpr) : [];
 
-  // DOM boxes: css px -> screenshot (device) px
-  const domScaled = domPiiBoxes.map((d) => ({
-    category: d.category,
-    confidence: d.confidence,
-    fieldId: d.fieldId,
-    bbox: { x: d.bbox.x * dpr, y: d.bbox.y * dpr, w: d.bbox.w * dpr, h: d.bbox.h * dpr },
-  }));
+  // DOM boxes: css px -> screenshot (device) px, clamped strictly to canvas viewport
+  const domScaled = domPiiBoxes.map((d) => {
+    const rawX = d.bbox.x * dpr;
+    const rawY = d.bbox.y * dpr;
+    const rawW = d.bbox.w * dpr;
+    const rawH = d.bbox.h * dpr;
+
+    const x = Math.max(0, Math.min(canvas.width, rawX));
+    const y = Math.max(0, Math.min(canvas.height, rawY));
+    const w = Math.max(0, Math.min(canvas.width - x, rawW));
+    const h = Math.max(0, Math.min(canvas.height - y, rawH));
+
+    const isAlways = d.alwaysRedact || isAlwaysRedactCategory(d.category) || isCredentialCategory(d.category);
+
+    return {
+      category: d.category,
+      confidence: isAlways ? 1.0 : d.confidence,
+      alwaysRedact: isAlways,
+      fieldId: d.fieldId,
+      bbox: { x, y, w, h },
+    };
+  }).filter((d) => d.bbox.w > 0 && d.bbox.h > 0);
 
   const visionDets = [...ocr.dets, ...faces.dets, ...labelDets];
   const merged = mergeDetections(domScaled, visionDets, 0.35);
@@ -134,11 +149,10 @@ async function process({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mod
   const fieldCategories = {};
   for (const d of labelDets) fieldCategories[d.fieldId] = d.category;
 
-  // redact: union of every merged region whose category the shared module
-  // flags as sensitive. This ensures the screenshot blackout list is
-  // decided identically to skeleton filtering and the executor guard.
+  // redact: union of every merged region whose category is sensitive, a credential,
+  // marked alwaysRedact, or a detected face.
   const regions = merged
-    .filter((m) => isSensitiveCategory(m.category) || m.category === "face")
+    .filter((m) => m.alwaysRedact || isAlwaysRedactCategory(m.category) || isCredentialCategory(m.category) || isSensitiveCategory(m.category) || m.category === "face")
     .map((m) => ({ ...m.bbox, category: m.category }));
   const tRedact = performance.now();
   const applied = redactCanvas(canvas, regions, { mode });

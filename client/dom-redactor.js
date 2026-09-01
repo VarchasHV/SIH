@@ -103,6 +103,24 @@
       validate: null,
       token: "████████████████",
     },
+    {
+      category: "otp",
+      re: /(?:\b(?:otp|2fa|code|verification|totp)[^0-9\n]{0,15}?)\b\d{4,8}\b/gi,
+      validate: null,
+      token: "██████",
+    },
+    {
+      category: "credential",
+      re: /\b(?:Bearer\s+[A-Za-z0-9._~+/-]+=*|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g,
+      validate: null,
+      token: "████████████████████",
+    },
+    {
+      category: "ssh-key",
+      re: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g,
+      validate: null,
+      token: "████████[SSH_PRIVATE_KEY_REDACTED]████████",
+    },
   ];
 
   // ═══════════════════════════════════════════════════════════════════════

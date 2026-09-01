@@ -3,32 +3,45 @@
  * Part of Privacy Lens Secure Form-Filling Agent.
  *
  * This module provides the regex rules, attribute scanners, and token mappings
- * used to identify and sanitize sensitive PII and confidential media before
- * sending the DOM structure to an external LLM.
+ * used to identify and sanitize sensitive PII, credentials, 2FA/OTP codes, and
+ * confidential media before sending the DOM structure to an external LLM.
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. PII RULE DICTIONARY & SEMANTIC TOKENS
 // ═══════════════════════════════════════════════════════════════════════════
-// Each rule defines:
-// - `category`: internal canonical name
-// - `token`: semantic replacement token injected into the sanitized payload
-// - `attrRegex`: matched against id, name, class, autocomplete, placeholder, aria-label
-// - `textRegex`: matched against raw text content inside <p> or text nodes
-//
-// HOW TO ADD NEW PII TYPES:
-// 1. Define a new entry in `DLP_RULES` below with a unique `category` and `token`.
-// 2. Add attribute regex patterns matching typical field IDs/names/classes.
-// 3. (Optional) Add a `textRegex` if the PII can appear as visible body text.
-// ═══════════════════════════════════════════════════════════════════════════
 
 export const DLP_RULES = [
-  // ── Authentication & Secrets ──
+  // ── Authentication, Credentials & Secrets ──
   {
     category: "password",
     token: "[TOKEN_PASSWORD]",
     attrRegex: /\b(password|passwd|passcode|secret|pwd|pin|auth_key|api_key)\b/i,
     textRegex: null,
+  },
+  {
+    category: "credential",
+    token: "[TOKEN_CREDENTIAL]",
+    attrRegex: /\b(credential|credentials|auth_token|token|session_token|access_token|security_key|auth_key|secret_key)\b/i,
+    textRegex: /\b(Bearer\s+[A-Za-z0-9._~+/-]+=*|eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/,
+  },
+  {
+    category: "otp",
+    token: "[TOKEN_OTP_2FA]",
+    attrRegex: /\b(otp|2fa|mfa|totp|auth_code|verification_code|one_time_code|sms_code)\b/i,
+    textRegex: /(?:\b(?:otp|2fa|code|verification|totp)[^0-9\n]{0,15}?)\b\d{4,8}\b/i,
+  },
+  {
+    category: "ssh_key",
+    token: "[TOKEN_SSH_KEY]",
+    attrRegex: /\b(ssh[_\s]?key|private[_\s]?key|id_rsa|id_ed25519)\b/i,
+    textRegex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
+  },
+  {
+    category: "api_key",
+    token: "[TOKEN_API_KEY]",
+    attrRegex: /\b(api[_\s]?key|apikey|secret[_\s]?key|client[_\s]?secret)\b/i,
+    textRegex: /\b(?:sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})\b/,
   },
 
   // ── Government & National Identifiers (Ordered longest first) ──
@@ -69,7 +82,7 @@ export const DLP_RULES = [
     textRegex: /\b[A-Z]{3}[0-9]{7}\b/,
   },
 
-  // ── Financial: Cards (Run before 12-digit Aadhaar to avoid partial matches) ──
+  // ── Financial: Cards & Banking ──
   {
     category: "credit_card",
     token: "[TOKEN_CREDIT_CARD]",
@@ -241,6 +254,8 @@ export const DLP_RULES = [
 export const SENSITIVE_MEDIA_REGEX = /\b(upload[_\s]?(id|doc|photo|file)|passport|driver[_\s]?license|govt[_\s]?id|identity|aadhaar|ssn|id[_\s]?card|proof[_\s]?of[_\s]?id|selfie|signature|profile[_\s]?photo)\b/i;
 
 export const GENERIC_TEXT_PII_REGEX = [
+  /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/g,
+  /\b(?:Bearer\s+[A-Za-z0-9._~+/-]+=*|sk-[a-zA-Z0-9]{20,}|ghp_[a-zA-Z0-9]{20,}|AKIA[0-9A-Z]{16})\b/g,
   /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, // Emails
   /\b\d{3}-\d{2}-\d{4}\b/g,                               // SSNs
   /(?<!\d)\b(?:\d[\s-]?){13,19}\b(?!\d)/g,                // Card numbers
@@ -254,17 +269,37 @@ export const GENERIC_TEXT_PII_REGEX = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Checks an element's attributes (id, name, class, autocomplete, placeholder, aria-label, type)
- * and its associated label text to determine if it is a sensitive field.
+ * Checks an element's attributes and signals to determine if it is a sensitive/credential field.
+ * Deterministically treats autofilled and credential fields as always sensitive.
  *
  * @param {Object} signals - Extracted field signals
- * @returns {{isSensitive: boolean, category: string|null, token: string|null}}
+ * @returns {{isSensitive: boolean, category: string|null, token: string|null, alwaysRedact?: boolean, isAutofilled?: boolean}}
  */
 export function classifyFieldHeuristics(signals = {}) {
+  const isAutofill = !!(signals.isAutofilled || signals.autofilled);
   const type = (signals.type || "").toLowerCase();
-  if (type === "password") {
-    return { isSensitive: true, category: "password", token: "[TOKEN_PASSWORD]" };
+  const auto = (signals.autocomplete || "").toLowerCase();
+
+  // 1. Deterministic always-redact for credentials and autofilled fields
+  if (isAutofill || type === "password" || /(password|one-time-code|webauthn|credential)/i.test(auto)) {
+    let cat = "password";
+    let tok = "[TOKEN_PASSWORD]";
+    if (auto === "one-time-code" || /\b(otp|2fa|mfa|totp)\b/i.test((signals.id || "") + " " + (signals.name || ""))) {
+      cat = "otp";
+      tok = "[TOKEN_OTP_2FA]";
+    } else if (/\b(token|key|secret|credential)\b/i.test((signals.id || "") + " " + (signals.name || ""))) {
+      cat = "credential";
+      tok = "[TOKEN_CREDENTIAL]";
+    }
+    return {
+      isSensitive: true,
+      category: cat,
+      token: tok,
+      alwaysRedact: true,
+      isAutofilled: isAutofill,
+    };
   }
+
   if (type === "email") {
     return { isSensitive: true, category: "email", token: "[TOKEN_EMAIL]" };
   }
@@ -276,8 +311,8 @@ export function classifyFieldHeuristics(signals = {}) {
     signals.id || "",
     signals.name || "",
     signals.className || "",
-    signals.type || "",
-    signals.autocomplete || "",
+    type,
+    auto,
     signals.placeholder || "",
     signals.ariaLabel || "",
     signals.labelText || "",
@@ -285,10 +320,12 @@ export function classifyFieldHeuristics(signals = {}) {
 
   for (const rule of DLP_RULES) {
     if (rule.attrRegex && rule.attrRegex.test(combinedAttributes)) {
+      const isCred = ["password", "credential", "otp", "ssh_key", "api_key", "credit_card", "cvv", "ssn", "aadhaar", "pan"].includes(rule.category);
       return {
         isSensitive: true,
         category: rule.category,
         token: rule.token,
+        alwaysRedact: isCred,
       };
     }
   }
@@ -298,7 +335,7 @@ export function classifyFieldHeuristics(signals = {}) {
 
 /**
  * Checks a paragraph or text node for sensitive formatted strings (e.g. emails,
- * account numbers, card numbers) and redacts them.
+ * account numbers, card numbers, OTPs, credentials, SSH keys) and redacts them.
  *
  * @param {string} text
  * @returns {string} Sanitized text
@@ -326,10 +363,6 @@ export function sanitizeParagraphText(text) {
  * Checks if an image or file upload is sensitive based on attributes and nearby text.
  *
  * @param {Object} mediaSignals
- * @param {string} mediaSignals.src
- * @param {string} mediaSignals.alt
- * @param {string} mediaSignals.title
- * @param {string} mediaSignals.nearbyText
  * @returns {boolean}
  */
 export function isSensitiveMedia(mediaSignals = {}) {
@@ -340,9 +373,17 @@ export function isSensitiveMedia(mediaSignals = {}) {
     mediaSignals.nearbyText || "",
   ].join(" ");
 
-  // If it's an inline data URI (raw image payload) or matches sensitive document indicators
   if ((mediaSignals.src && mediaSignals.src.startsWith("data:")) || SENSITIVE_MEDIA_REGEX.test(combined)) {
     return true;
   }
   return false;
 }
+
+export default {
+  DLP_RULES,
+  SENSITIVE_MEDIA_REGEX,
+  GENERIC_TEXT_PII_REGEX,
+  classifyFieldHeuristics,
+  sanitizeParagraphText,
+  isSensitiveMedia,
+};

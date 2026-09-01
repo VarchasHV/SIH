@@ -4,7 +4,9 @@
 // Operates on a plain "signals" object so it needs no browser.
 
 export const MATCHERS = [
-  { category: "password", type: /password/i, autocomplete: /^(new-password|current-password)$/i, nameId: /\b(password|passcode|passwd)\b/i, labelPlaceholder: /\b(password|passcode|passwd)\b/i },
+  { category: "password", type: /password/i, autocomplete: /^(new-password|current-password)$/i, nameId: /\b(password|passcode|passwd|secret_key|secret)\b/i, labelPlaceholder: /\b(password|passcode|passwd|secret)\b/i },
+  { category: "credential", autocomplete: /^(current-password|new-password|webauthn|credential)$/i, nameId: /\b(credential|credentials|secret|api_key|apikey|auth_token|token|ssh_key|session_token|access_token|security_key)\b/i, labelPlaceholder: /\b(credential|credentials|secret|api key|auth token|token|ssh key|session token|access token|security key)\b/i },
+  { category: "otp", autocomplete: /^one-time-code$/i, nameId: /\b(otp|2fa|mfa|totp|auth_code|verification_code|one_time_code|sms_code)\b/i, labelPlaceholder: /\b(otp|2fa|mfa|totp|verification code|one time code|security code|auth code|authenticator)\b/i },
   { category: "email", type: /email/i, autocomplete: /^email$/i, nameId: /\b(email|e-mail|mail_addr|mailaddr)\b/i, labelPlaceholder: /\b(email|e-mail|mail_addr|mailaddr)\b/i },
   { category: "username", autocomplete: /^(username|nickname)$/i, nameId: /\b(username|user_name|usrname|userid|user_id|login_id|loginid)\b/i, labelPlaceholder: /\b(username|user_name|usrname|userid|user_id|login_id|loginid)\b/i },
   { category: "phone number", type: /tel/i, autocomplete: /\b(tel|phone|mobile)\b/i, nameId: /\b(phone|telephone|mobile|cellphone|contact_no|contact_number|phone_no|phoneno|tel_no|homephone|home_phone|workphone|work_phone|fax)\b/i, labelPlaceholder: /\b(phone|telephone|mobile|cellphone|contact_no|contact_number|phone_no|phoneno|tel_no|home phone|work phone|fax)\b/i },
@@ -50,7 +52,9 @@ const NAME_EXCLUDE = /\b(domain|search|pet|product|file|host|category|display|cl
 
 // Loose substring keywords - obfuscated/truncated name attrs + spatial captions.
 export const LOOSE_KEYWORDS = {
-  password: ["password", "passwd", "passcode", "pwd"],
+  password: ["password", "passwd", "passcode", "pwd", "secret"],
+  credential: ["credential", "credentials", "apikey", "authtoken", "secretkey", "sshkey", "sessiontoken", "bearertoken"],
+  otp: ["otp", "2fa", "mfa", "totp", "authcode", "verificationcode", "onetimecode"],
   email: ["email", "emailadr", "emailaddress", "mailaddr"],
   username: ["username", "userid", "loginid", "userlogin"],
   "phone number": ["phone", "phon", "mobile", "cellphone", "cellphon", "telephone", "homephon", "workphon", "faxphone"],
@@ -91,8 +95,8 @@ export const LOOSE_KEYWORDS = {
 };
 
 /**
- * @param {{tagName:string,type?:string,name?:string,id?:string,autocomplete?:string,placeholder?:string,ariaLabel?:string,labelText?:string,nearbyText?:string,normName?:string}} s
- * @returns {{category:string, confidence:number}|null}
+ * @param {{tagName:string,type?:string,name?:string,id?:string,autocomplete?:string,placeholder?:string,ariaLabel?:string,labelText?:string,nearbyText?:string,normName?:string,isAutofilled?:boolean}} s
+ * @returns {{category:string, confidence:number, alwaysRedact?:boolean, isAutofilled?:boolean}|null}
  */
 export function classifySignals(s) {
   const g = (k) => (s[k] || "").toLowerCase();
@@ -103,6 +107,22 @@ export function classifySignals(s) {
   const normName = (s.normName || (g("name") + g("id"))).replace(/[^a-z]+/g, "");
   const capLetters = (g("labelText") + g("ariaLabel") + g("placeholder")).replace(/[^a-z]+/g, "");
 
+  // 1. Deterministic Always-Redact for Autofilled and Credential Fields
+  const isAutofill = !!(s.isAutofilled || s.autofilled || s.isAutofill);
+  const isPwd = tag === "input" && type === "password";
+  const isCredentialAuto = g("autocomplete") && /^(current-password|new-password|one-time-code|webauthn|credential)$/i.test(g("autocomplete"));
+
+  if (isAutofill || isPwd || isCredentialAuto) {
+    let cat = "password";
+    if (g("autocomplete") === "one-time-code" || /\b(otp|2fa|mfa|totp)\b/i.test(normName + " " + capLetters)) {
+      cat = "otp";
+    } else if (/\b(credential|token|key|secret)\b/i.test(normName + " " + capLetters)) {
+      cat = "credential";
+    }
+    return { category: cat, confidence: 1.0, alwaysRedact: true, isAutofilled: isAutofill };
+  }
+
+  // 2. Heuristic scoring across rules
   let best = null;
   let max = 0;
   for (const m of MATCHERS) {
@@ -121,6 +141,8 @@ export function classifySignals(s) {
     }
     if (c > max) { max = c; best = { category: m.category, confidence: c }; }
   }
+
+  // 3. Fallback name detection
   if (max < 0.7) {
     const exact = /^(name|full_name|fullname)$/i;
     if ([g("name"), g("id"), g("placeholder"), g("ariaLabel"), g("labelText")].some((v) => exact.test(v)) &&
@@ -129,7 +151,16 @@ export function classifySignals(s) {
       max = 0.7;
     }
   }
-  return max >= 0.5 ? best : null;
+
+  if (max >= 0.5 && best) {
+    const isCred = ["password", "credential", "otp", "credit/debit card number", "CVV/security code", "SSN", "Aadhaar", "PAN"].includes(best.category);
+    return {
+      ...best,
+      alwaysRedact: isCred,
+    };
+  }
+
+  return null;
 }
 
 export default { MATCHERS, LOOSE_KEYWORDS, classifySignals };

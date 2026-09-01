@@ -30,17 +30,19 @@
     const domPiiBoxes = window.__PL.domPiiBoxes();
 
     // Annotate nodes:
-    // - High-risk secrets (password, aadhaar, ssn, card number) are marked isCensored: true
+    // - High-risk secrets & credentials (RESTRICTED_PII_CATEGORIES / alwaysRedact) are marked isCensored: true
     // - If profile has local data for piiCategory, node.hasFill = true and node.fillToken = "local:<category>"
     for (const node of skeleton.nodes) {
       const piiCat = node.piiCategory;
       const profileVal = piiCat ? resolveProfileValue(profile, piiCat) : null;
+      const isRestricted = node.alwaysRedact || (piiCat && RESTRICTED_PII_CATEGORIES.has(piiCat));
 
-      if (piiCat && RESTRICTED_PII_CATEGORIES.has(piiCat)) {
+      if (isRestricted) {
         node.isCensored = true;
+        node.alwaysRedact = true;
         if (profileVal != null) {
           node.hasFill = true;
-          node.fillToken = `local:${piiCat}`;
+          node.fillToken = `local:${piiCat || "credential"}`;
         } else {
           node.hasFill = false;
           node.fillToken = null;

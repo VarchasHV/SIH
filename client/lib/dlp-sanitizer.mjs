@@ -44,11 +44,11 @@ export function resolveFieldLabel(element, doc = typeof document !== "undefined"
   }
 
   // 2. Enclosing <label>
-  const enclosingLabel = element.closest("label");
+  const enclosingLabel = element.closest ? element.closest("label") : null;
   if (enclosingLabel) {
     // Clone and remove the input itself to get just the text
     const clone = enclosingLabel.cloneNode(true);
-    const nestedInput = clone.querySelector("input, select, textarea");
+    const nestedInput = clone.querySelector ? clone.querySelector("input, select, textarea") : null;
     if (nestedInput) nestedInput.remove();
     const text = clone.textContent.trim();
     if (text) return text;
@@ -57,7 +57,7 @@ export function resolveFieldLabel(element, doc = typeof document !== "undefined"
   // 3. aria-labelledby
   const labelledBy = element.getAttribute("aria-labelledby");
   if (labelledBy && doc) {
-    const ref = doc.getElementById(labelledBy);
+    const ref = doc.getElementById ? doc.getElementById(labelledBy) : null;
     if (ref && ref.textContent.trim()) {
       return ref.textContent.trim();
     }
@@ -74,7 +74,6 @@ export function resolveFieldLabel(element, doc = typeof document !== "undefined"
   if (title) return title.trim();
 
   // 5. DOM Proximity Heuristics
-  // A. Preceding element sibling (e.g. <label> or <span> or <p> right before the input)
   let prev = element.previousElementSibling;
   while (prev) {
     if (["LABEL", "SPAN", "P", "DIV", "B", "STRONG"].includes(prev.tagName)) {
@@ -84,8 +83,7 @@ export function resolveFieldLabel(element, doc = typeof document !== "undefined"
     prev = prev.previousElementSibling;
   }
 
-  // B. Table cell proximity (e.g. <tr><td>First Name</td><td><input /></td></tr>)
-  const td = element.closest("td");
+  const td = element.closest ? element.closest("td") : null;
   if (td && td.previousElementSibling) {
     const text = td.previousElementSibling.textContent.trim();
     if (text && text.length <= 80) return text;
@@ -131,6 +129,17 @@ export class DLPSanitizer {
     const required = el.required || el.getAttribute("aria-required") === "true";
     const label = resolveFieldLabel(el, doc);
 
+    const isAutofill = !!(
+      (typeof isAutofilled === "function" && isAutofilled(el)) ||
+      (el.hasAttribute && (
+        el.hasAttribute("data-com-onepassword-filled") ||
+        el.hasAttribute("data-bitwarden-filled") ||
+        el.hasAttribute("data-lastpass-filled") ||
+        el.hasAttribute("data-pl-autofill") ||
+        el.hasAttribute("autofilled")
+      ))
+    );
+
     // Heuristics classification
     const classification = classifyFieldHeuristics({
       id,
@@ -141,6 +150,7 @@ export class DLPSanitizer {
       placeholder,
       ariaLabel,
       labelText: label,
+      isAutofilled: isAutofill,
     });
 
     // Strip raw value: If sensitive, inject semantic token; otherwise preserve structural empty/state
@@ -151,14 +161,17 @@ export class DLPSanitizer {
       sanitizedValue = el.checked ? "checked" : "unchecked";
     }
 
+    const isAlwaysRedact = !!(classification.alwaysRedact || isAutofill);
+
     const fieldData = {
       tag: tagName,
       type,
       id: id || undefined,
-      name: name || undefined,
-      label: label || undefined,
+      name: isAlwaysRedact ? undefined : (name || undefined),
+      label: isAlwaysRedact ? undefined : (label || undefined),
       required: required ? true : undefined,
       isSensitive: classification.isSensitive,
+      alwaysRedact: isAlwaysRedact || undefined,
       category: classification.category || undefined,
       value: sanitizedValue,
     };

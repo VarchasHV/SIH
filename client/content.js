@@ -1,11 +1,13 @@
-// Privacy Lens Content Script - Sensitive Field Detection
+// Privacy Lens Content Script - Sensitive Field Detection & Scope Isolation
 
 (function () {
   if (window.__plContentScriptLoaded) return;
   window.__plContentScriptLoaded = true;
 
   const matchers = [
-    { category: 'password', type: /password/i, autocomplete: /^(new-password|current-password)$/i, nameId: /\b(password|passcode|passwd)\b/i, labelPlaceholder: /\b(password|passcode|passwd)\b/i },
+    { category: 'password', type: /password/i, autocomplete: /^(new-password|current-password)$/i, nameId: /\b(password|passcode|passwd|secret_key|secret)\b/i, labelPlaceholder: /\b(password|passcode|passwd|secret)\b/i },
+    { category: 'credential', autocomplete: /^(current-password|new-password|webauthn|credential)$/i, nameId: /\b(credential|credentials|secret|api_key|apikey|auth_token|token|ssh_key|session_token|access_token|security_key)\b/i, labelPlaceholder: /\b(credential|credentials|secret|api key|auth token|token|ssh key|session token|access token|security key)\b/i },
+    { category: 'otp', autocomplete: /^one-time-code$/i, nameId: /\b(otp|2fa|mfa|totp|auth_code|verification_code|one_time_code|sms_code)\b/i, labelPlaceholder: /\b(otp|2fa|mfa|totp|verification code|one time code|security code|auth code|authenticator)\b/i },
     { category: 'email', type: /email/i, autocomplete: /^email$/i, nameId: /\b(email|e-mail|mail_addr|mailaddr)\b/i, labelPlaceholder: /\b(email|e-mail|mail_addr|mailaddr)\b/i },
     { category: 'username', autocomplete: /^(username|nickname)$/i, nameId: /\b(username|user_name|usrname|userid|user_id|login_id|loginid)\b/i, labelPlaceholder: /\b(username|user_name|usrname|userid|user_id|login_id|loginid)\b/i },
     { category: 'phone number', type: /tel/i, autocomplete: /\b(tel|phone|mobile)\b/i, nameId: /\b(phone|telephone|mobile|cellphone|contact_no|contact_number|phone_no|phoneno|tel_no|homephone|home_phone|workphone|work_phone|fax)\b/i, labelPlaceholder: /\b(phone|telephone|mobile|cellphone|contact_no|contact_number|phone_no|phoneno|tel_no|home phone|work phone|fax)\b/i },
@@ -48,7 +50,9 @@
   ];
 
   const LOOSE_KEYWORDS = {
-    'password': ['password', 'passwd', 'passcode', 'pwd'],
+    'password': ['password', 'passwd', 'passcode', 'pwd', 'secret'],
+    'credential': ['credential', 'credentials', 'apikey', 'authtoken', 'secretkey', 'sshkey', 'sessiontoken', 'bearertoken'],
+    'otp': ['otp', '2fa', 'mfa', 'totp', 'authcode', 'verificationcode', 'onetimecode'],
     'email': ['email', 'emailadr', 'emailaddress', 'mailaddr'],
     'username': ['username', 'userid', 'loginid', 'userlogin'],
     'phone number': ['phone', 'phon', 'mobile', 'cellphone', 'cellphon', 'telephone', 'homephon', 'workphon', 'faxphone'],
@@ -88,328 +92,391 @@
     'custom messages and comments': ['comments', 'feedback', 'message'],
   };
 
-// Letters-only text of an element, if it reads like a field caption.
-function captionText(node) {
-  if (!node) return '';
-  const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
-  return t && t.length <= 60 && /[a-z]/i.test(t) ? t : '';
-}
-
-// Nearest caption when there is no <label>: table cell to the left, grid column
-// sibling, or a preceding block within an ancestor.
-function spatialLabel(el) {
-  const cell = el.closest('td, th');
-  if (cell) {
-    const c = captionText(cell.previousElementSibling);
-    if (c) return c;
-  }
-  let cur = el;
-  for (let depth = 0; depth < 4 && cur; depth++, cur = cur.parentElement) {
-    const sib = cur.previousElementSibling;
-    if (sib && !sib.querySelector('input, select, textarea') && captionText(sib)) return captionText(sib);
-  }
-  const group = el.closest('[class*="form-group"], [class*="field"], [class*="row"], [class*="col"], dd');
-  if (group) {
-    const label = group.querySelector('label, legend');
-    if (captionText(label)) return captionText(label);
-    if (captionText(group.previousElementSibling)) return captionText(group.previousElementSibling);
-  }
-  return '';
-}
-
-function getElementSignals(el) {
-  const tagName = el.tagName.toLowerCase();
-  const type = el.getAttribute('type') || '';
-  const name = el.getAttribute('name') || '';
-  const id = el.getAttribute('id') || '';
-  const autocomplete = el.getAttribute('autocomplete') || '';
-  const placeholder = el.getAttribute('placeholder') || '';
-  const ariaLabel = el.getAttribute('aria-label') || '';
-
-  // Find associated label text
-  let labelText = '';
-  if (id) {
+  // Detect autofilled states from browser or password managers (1Password, Bitwarden, LastPass, Dashlane, Chrome)
+  function isAutofilled(el) {
+    if (!el) return false;
     try {
-      const labelEl = document.querySelector(`label[for="${CSS.escape(id)}"]`);
-      if (labelEl) {
-        labelText = labelEl.textContent || '';
+      if (el.matches(':-webkit-autofill, :autofill, [data-com-onepassword-filled], [data-bitwarden-filled], [data-lastpass-filled], [data-dashlane-filled], [data-pl-autofill], [autofilled]')) {
+        return true;
       }
     } catch (e) {
-      // CSS.escape fallback / safe catch
+      // CSS pseudo-class matches fallback
     }
-  }
-  if (!labelText) {
-    const closestLabel = el.closest('label');
-    if (closestLabel) {
-      labelText = closestLabel.textContent || '';
+    // Check custom attribute markers
+    if (el.hasAttribute && (
+      el.hasAttribute('data-com-onepassword-filled') ||
+      el.hasAttribute('data-bitwarden-filled') ||
+      el.hasAttribute('data-lastpass-filled') ||
+      el.hasAttribute('data-pl-autofill')
+    )) {
+      return true;
     }
-  }
-
-  // aria-labelledby
-  const labelledBy = el.getAttribute('aria-labelledby');
-  if (!labelText && labelledBy) {
-    const labels = labelledBy.split(/\s+/).map(lId => {
-      const lEl = document.getElementById(lId);
-      return lEl ? (lEl.textContent || '') : '';
-    }).filter(Boolean);
-    if (labels.length > 0) {
-      labelText = labels.join(' ');
-    }
+    return false;
   }
 
-  // Spatial fallback: captions in a sibling grid/table cell rather than a <label>.
-  if (!labelText || labelText.length > 80) {
-    labelText = labelText || spatialLabel(el);
+  // Letters-only text of an element, if it reads like a field caption.
+  function captionText(node) {
+    if (!node) return '';
+    const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
+    return t && t.length <= 60 && /[a-z]/i.test(t) ? t : '';
   }
 
-  // Preceding/nearby text content in the parent
-  let nearbyText = '';
-  const parent = el.parentElement;
-  if (parent) {
-    nearbyText = parent.textContent || '';
+  // Nearest caption when there is no <label>: table cell to the left, grid column
+  // sibling, or a preceding block within an ancestor.
+  function spatialLabel(el) {
+    const cell = el.closest('td, th');
+    if (cell) {
+      const c = captionText(cell.previousElementSibling);
+      if (c) return c;
+    }
+    let cur = el;
+    for (let depth = 0; depth < 4 && cur; depth++, cur = cur.parentElement) {
+      const sib = cur.previousElementSibling;
+      if (sib && !sib.querySelector('input, select, textarea') && captionText(sib)) return captionText(sib);
+    }
+    const group = el.closest('[class*="form-group"], [class*="field"], [class*="row"], [class*="col"], dd');
+    if (group) {
+      const label = group.querySelector('label, legend');
+      if (captionText(label)) return captionText(label);
+      if (captionText(group.previousElementSibling)) return captionText(group.previousElementSibling);
+    }
+    return '';
   }
 
-  return {
-    tagName,
-    type: type.toLowerCase(),
-    name: name.toLowerCase(),
-    id: id.toLowerCase(),
-    autocomplete: autocomplete.toLowerCase(),
-    placeholder: placeholder.toLowerCase(),
-    ariaLabel: ariaLabel.toLowerCase(),
-    labelText: labelText.toLowerCase(),
-    nearbyText: nearbyText.toLowerCase(),
-    normName: (name + ' ' + id).toLowerCase().replace(/[^a-z]+/g, '')
-  };
-}
+  function getElementSignals(el) {
+    const tagName = el.tagName.toLowerCase();
+    const type = el.getAttribute('type') || '';
+    const name = el.getAttribute('name') || '';
+    const id = el.getAttribute('id') || '';
+    const autocomplete = el.getAttribute('autocomplete') || '';
+    const placeholder = el.getAttribute('placeholder') || '';
+    const ariaLabel = el.getAttribute('aria-label') || '';
 
-function classifyElement(el) {
-  const s = getElementSignals(el);
-
-  // Ignore non-editable and non-input buttons, submit, reset, checkboxes, radios, etc.
-  if (s.tagName === 'input') {
-    const ignoredTypes = ['button', 'submit', 'reset', 'image', 'file', 'checkbox', 'radio', 'range', 'color', 'hidden'];
-    if (ignoredTypes.includes(s.type)) {
-      return null;
-    }
-  } else if (s.tagName !== 'textarea' && s.tagName !== 'select') {
-    // If it's a generic element, make sure it is actually contenteditable
-    if (!el.isContentEditable && el.getAttribute('contenteditable') === null) {
-      return null;
-    }
-  }
-
-  let bestMatch = null;
-  let maxConfidence = 0;
-
-  for (const m of matchers) {
-    let confidence = 0;
-
-    // Check Type (Only for inputs)
-    if (s.tagName === 'input' && m.type && m.type.test(s.type)) {
-      confidence = Math.max(confidence, 1.0);
-    }
-
-    // Check Autocomplete
-    if (s.autocomplete && m.autocomplete && m.autocomplete.test(s.autocomplete)) {
-      confidence = Math.max(confidence, 0.95);
-    }
-
-    // Check Name / ID
-    if (m.nameId) {
-      if (m.nameId.test(s.name) || m.nameId.test(s.id)) {
-        confidence = Math.max(confidence, 0.85);
-      }
-    }
-
-    // Check Labels, Placeholders, Aria Labels
-    if (m.labelPlaceholder) {
-      if (m.labelPlaceholder.test(s.placeholder) || m.labelPlaceholder.test(s.ariaLabel) || m.labelPlaceholder.test(s.labelText)) {
-        confidence = Math.max(confidence, 0.75);
-      }
-    }
-
-    // Check nearby text (fallback)
-    if (m.labelPlaceholder && m.labelPlaceholder.test(s.nearbyText)) {
-      confidence = Math.max(confidence, 0.45);
-    }
-
-    // Fuzzy pass: obfuscated/truncated name attrs + spatial captions.
-    const loose = LOOSE_KEYWORDS[m.category];
-    if (loose && confidence < 0.85) {
-      const nm = loose.find(kw => s.normName.includes(kw));
-      const capLetters = (s.labelText + s.ariaLabel + s.placeholder).replace(/[^a-z]+/gi, '').toLowerCase();
-      const cm = !nm && capLetters.length >= 3 && loose.find(kw => capLetters.includes(kw));
-      if (nm) confidence = Math.max(confidence, nm.length >= 9 ? 0.82 : 0.8);
-      else if (cm) confidence = Math.max(confidence, cm.length >= 9 ? 0.82 : 0.72);
-    }
-
-    if (confidence > maxConfidence) {
-      maxConfidence = confidence;
-      bestMatch = { category: m.category, confidence };
-    }
-  }
-
-  // Custom fallback checks for "name" (when exactly name/fullname/fullname)
-  if (maxConfidence < 0.7) {
-    const isExactlyName = /^(name|full_name|fullname)$/i;
-    const nameMatches = isExactlyName.test(s.name) || isExactlyName.test(s.id) || isExactlyName.test(s.placeholder) || isExactlyName.test(s.ariaLabel) || isExactlyName.test(s.labelText);
-    if (nameMatches) {
-      // Ensure it is not matching common non-sensitive name fields (like domain name, search name, pet name, etc.)
-      const isExcluded = /\b(domain|search|pet|product|file|host|category|display|class|group|event|stage|repo|project)\b/i.test(s.name || s.id || s.placeholder || s.labelText);
-      if (!isExcluded) {
-        bestMatch = { category: 'full name', confidence: 0.70 };
-        maxConfidence = 0.70;
-      }
-    }
-  }
-
-  // Set minimum confidence threshold
-  if (maxConfidence >= 0.5) {
-    return bestMatch;
-  }
-  return null;
-}
-
-function getSensitiveDOMBoxes() {
-  const candidates = document.querySelectorAll('input, textarea, select, [contenteditable]');
-  const dpr = window.devicePixelRatio || 1;
-  const boxes = [];
-  const uniqueElements = new Set();
-
-  candidates.forEach(el => {
-    if (uniqueElements.has(el)) return;
-    uniqueElements.add(el);
-
-    const classification = classifyElement(el);
-    if (!classification) return;
-
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) return;
-
-    boxes.push({
-      category: classification.category,
-      confidence: classification.confidence,
-      element: el.tagName.toLowerCase(),
-      name: el.getAttribute('name') || '',
-      id: el.getAttribute('id') || '',
-      x: Math.round(rect.left * dpr),
-      y: Math.round(rect.top * dpr),
-      w: Math.round(rect.width * dpr),
-      h: Math.round(rect.height * dpr)
-    });
-  });
-
-  return boxes;
-}
-
-// Debounce helper
-function debounce(fn, delay) {
-  let timer = null;
-  return function (...args) {
-    clearTimeout(timer);
-    timer = setTimeout(() => fn.apply(this, args), delay);
-  };
-}
-
-// Equality checker for cached findings
-function findingsEqual(a, b) {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    if (
-      a[i].category !== b[i].category ||
-      a[i].confidence !== b[i].confidence ||
-      a[i].element !== b[i].element ||
-      a[i].name !== b[i].name ||
-      a[i].id !== b[i].id ||
-      a[i].x !== b[i].x ||
-      a[i].y !== b[i].y ||
-      a[i].w !== b[i].w ||
-      a[i].h !== b[i].h
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-// Check if mutation record is relevant to our scanning candidates or attributes
-function isMutationRelevant(mutations) {
-  for (const record of mutations) {
-    if (record.type === 'attributes') {
-      return true; // filtered by attributeFilter
-    }
-    if (record.type === 'childList') {
-      for (const node of record.addedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.matches('input, textarea, select, [contenteditable]') || node.querySelector('input, textarea, select, [contenteditable]')) {
-            return true;
-          }
-        }
-      }
-      for (const node of record.removedNodes) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.matches('input, textarea, select, [contenteditable]') || node.querySelector('input, textarea, select, [contenteditable]')) {
-            return true;
-          }
-        }
-      }
-    }
-  }
-  return false;
-}
-
-if (!window.hasInjectedPrivacyAgent) {
-  window.hasInjectedPrivacyAgent = true;
-
-  let cachedBoxes = getSensitiveDOMBoxes();
-
-  // Create MutationObserver
-  const observer = new MutationObserver(mutations => {
-    if (isMutationRelevant(mutations)) {
-      debouncedScan();
-    }
-  });
-
-  observer.observe(document.documentElement, {
-    childList: true,
-    subtree: true,
-    attributes: true,
-    attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'aria-labelledby', 'contenteditable']
-  });
-
-  const debouncedScan = debounce(() => {
-    const newBoxes = getSensitiveDOMBoxes();
-    if (!findingsEqual(cachedBoxes, newBoxes)) {
-      cachedBoxes = newBoxes;
+    // Find associated label text
+    let labelText = '';
+    if (id) {
       try {
-        chrome.runtime.sendMessage({ action: 'FIELDS_UPDATED', boxes: cachedBoxes }, () => {
-          // Accessing lastError prevents uncaught exception when popup is closed
-          if (chrome.runtime.lastError) {
-            // No-op
-          }
-        });
+        const labelEl = document.querySelector(`label[for="${CSS.escape(id)}"]`);
+        if (labelEl) {
+          labelText = labelEl.textContent || '';
+        }
       } catch (e) {
-        // No-op
+        // CSS.escape fallback
       }
     }
-  }, 200);
+    if (!labelText) {
+      const closestLabel = el.closest('label');
+      if (closestLabel) {
+        labelText = closestLabel.textContent || '';
+      }
+    }
 
-  // Listen to scroll & resize
-  window.addEventListener('scroll', debouncedScan, { passive: true });
-  window.addEventListener('resize', debouncedScan, { passive: true });
+    // aria-labelledby
+    const labelledBy = el.getAttribute('aria-labelledby');
+    if (!labelText && labelledBy) {
+      const labels = labelledBy.split(/\s+/).map(lId => {
+        const lEl = document.getElementById(lId);
+        return lEl ? (lEl.textContent || '') : '';
+      }).filter(Boolean);
+      if (labels.length > 0) {
+        labelText = labels.join(' ');
+      }
+    }
 
-  // Chrome messaging listener
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'GET_PII_BOXES') {
-      cachedBoxes = getSensitiveDOMBoxes();
-      sendResponse({ boxes: cachedBoxes });
+    // Spatial fallback: captions in a sibling grid/table cell rather than a <label>.
+    if (!labelText || labelText.length > 80) {
+      labelText = labelText || spatialLabel(el);
+    }
+
+    // Preceding/nearby text content in the parent
+    let nearbyText = '';
+    const parent = el.parentElement;
+    if (parent) {
+      nearbyText = parent.textContent || '';
+    }
+
+    return {
+      tagName,
+      type: type.toLowerCase(),
+      name: name.toLowerCase(),
+      id: id.toLowerCase(),
+      autocomplete: autocomplete.toLowerCase(),
+      placeholder: placeholder.toLowerCase(),
+      ariaLabel: ariaLabel.toLowerCase(),
+      labelText: labelText.toLowerCase(),
+      nearbyText: nearbyText.toLowerCase(),
+      normName: (name + ' ' + id).toLowerCase().replace(/[^a-z]+/g, ''),
+      isAutofilled: isAutofilled(el)
+    };
+  }
+
+  function classifyElement(el) {
+    const s = getElementSignals(el);
+
+    // Ignore non-editable and non-input buttons, submit, reset, checkboxes, radios, etc.
+    if (s.tagName === 'input') {
+      const ignoredTypes = ['button', 'submit', 'reset', 'image', 'file', 'checkbox', 'radio', 'range', 'color', 'hidden'];
+      if (ignoredTypes.includes(s.type)) {
+        return null;
+      }
+    } else if (s.tagName !== 'textarea' && s.tagName !== 'select') {
+      // If it's a generic element, make sure it is actually contenteditable
+      if (!el.isContentEditable && el.getAttribute('contenteditable') === null) {
+        return null;
+      }
+    }
+
+    // ── 1. Deterministic Always-Redact for Autofilled & Credential Fields ──
+    const isAutofill = !!s.isAutofilled;
+    const isPwd = s.tagName === 'input' && s.type === 'password';
+    const isCredentialAuto = s.autocomplete && /^(current-password|new-password|one-time-code|webauthn|credential)$/i.test(s.autocomplete);
+
+    if (isAutofill || isPwd || isCredentialAuto) {
+      let cat = 'password';
+      if (s.autocomplete === 'one-time-code' || /\b(otp|2fa|mfa|totp)\b/i.test(s.normName + ' ' + s.labelText + ' ' + s.placeholder)) {
+        cat = 'otp';
+      } else if (/\b(credential|token|key|secret)\b/i.test(s.normName + ' ' + s.labelText + ' ' + s.placeholder)) {
+        cat = 'credential';
+      }
+      return { category: cat, confidence: 1.0, alwaysRedact: true, isAutofilled: isAutofill };
+    }
+
+    // ── 2. Standard heuristic classification ──
+    let bestMatch = null;
+    let maxConfidence = 0;
+
+    for (const m of matchers) {
+      let confidence = 0;
+
+      // Check Type (Only for inputs)
+      if (s.tagName === 'input' && m.type && m.type.test(s.type)) {
+        confidence = Math.max(confidence, 1.0);
+      }
+
+      // Check Autocomplete
+      if (s.autocomplete && m.autocomplete && m.autocomplete.test(s.autocomplete)) {
+        confidence = Math.max(confidence, 0.95);
+      }
+
+      // Check Name / ID
+      if (m.nameId) {
+        if (m.nameId.test(s.name) || m.nameId.test(s.id)) {
+          confidence = Math.max(confidence, 0.85);
+        }
+      }
+
+      // Check Labels, Placeholders, Aria Labels
+      if (m.labelPlaceholder) {
+        if (m.labelPlaceholder.test(s.placeholder) || m.labelPlaceholder.test(s.ariaLabel) || m.labelPlaceholder.test(s.labelText)) {
+          confidence = Math.max(confidence, 0.75);
+        }
+      }
+
+      // Check nearby text (fallback)
+      if (m.labelPlaceholder && m.labelPlaceholder.test(s.nearbyText)) {
+        confidence = Math.max(confidence, 0.45);
+      }
+
+      // Fuzzy pass: obfuscated/truncated name attrs + spatial captions.
+      const loose = LOOSE_KEYWORDS[m.category];
+      if (loose && confidence < 0.85) {
+        const nm = loose.find(kw => s.normName.includes(kw));
+        const capLetters = (s.labelText + s.ariaLabel + s.placeholder).replace(/[^a-z]+/gi, '').toLowerCase();
+        const cm = !nm && capLetters.length >= 3 && loose.find(kw => capLetters.includes(kw));
+        if (nm) confidence = Math.max(confidence, nm.length >= 9 ? 0.82 : 0.8);
+        else if (cm) confidence = Math.max(confidence, cm.length >= 9 ? 0.82 : 0.72);
+      }
+
+      if (confidence > maxConfidence) {
+        maxConfidence = confidence;
+        bestMatch = { category: m.category, confidence };
+      }
+    }
+
+    // Custom fallback checks for "name" (when exactly name/fullname)
+    if (maxConfidence < 0.7) {
+      const isExactlyName = /^(name|full_name|fullname)$/i;
+      const nameMatches = isExactlyName.test(s.name) || isExactlyName.test(s.id) || isExactlyName.test(s.placeholder) || isExactlyName.test(s.ariaLabel) || isExactlyName.test(s.labelText);
+      if (nameMatches) {
+        const isExcluded = /\b(domain|search|pet|product|file|host|category|display|class|group|event|stage|repo|project)\b/i.test(s.name || s.id || s.placeholder || s.labelText);
+        if (!isExcluded) {
+          bestMatch = { category: 'full name', confidence: 0.70 };
+          maxConfidence = 0.70;
+        }
+      }
+    }
+
+    // Set minimum confidence threshold
+    if (maxConfidence >= 0.5 && bestMatch) {
+      const isCred = ['password', 'credential', 'otp', 'credit/debit card number', 'CVV/security code', 'SSN', 'Aadhaar', 'PAN'].includes(bestMatch.category);
+      return {
+        ...bestMatch,
+        alwaysRedact: isCred,
+      };
+    }
+    return null;
+  }
+
+  // Viewport-isolated sensitive DOM bounding box extraction
+  function getSensitiveDOMBoxes() {
+    const candidates = document.querySelectorAll('input, textarea, select, [contenteditable]');
+    const dpr = window.devicePixelRatio || 1;
+    const boxes = [];
+    const uniqueElements = new Set();
+
+    const vpW = window.innerWidth;
+    const vpH = window.innerHeight;
+
+    candidates.forEach(el => {
+      if (uniqueElements.has(el)) return;
+      uniqueElements.add(el);
+
+      const classification = classifyElement(el);
+      if (!classification) return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+
+      // Strict active viewport scope isolation: skip elements entirely outside the visible viewport
+      if (rect.bottom <= 0 || rect.right <= 0 || rect.top >= vpH || rect.left >= vpW) {
+        return;
+      }
+
+      // Clamp bounding box to active viewport boundaries
+      const clampLeft = Math.max(0, Math.min(vpW, rect.left));
+      const clampTop = Math.max(0, Math.min(vpH, rect.top));
+      const clampRight = Math.max(0, Math.min(vpW, rect.right));
+      const clampBottom = Math.max(0, Math.min(vpH, rect.bottom));
+      const clampW = clampRight - clampLeft;
+      const clampH = clampBottom - clampTop;
+
+      if (clampW <= 0 || clampH <= 0) return;
+
+      boxes.push({
+        category: classification.category,
+        confidence: classification.confidence,
+        alwaysRedact: !!(classification.alwaysRedact || classification.isAutofilled),
+        element: el.tagName.toLowerCase(),
+        name: el.getAttribute('name') || '',
+        id: el.getAttribute('id') || '',
+        x: Math.round(clampLeft * dpr),
+        y: Math.round(clampTop * dpr),
+        w: Math.round(clampW * dpr),
+        h: Math.round(clampH * dpr)
+      });
+    });
+
+    return boxes;
+  }
+
+  // Debounce helper
+  function debounce(fn, delay) {
+    let timer = null;
+    return function (...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), delay);
+    };
+  }
+
+  // Equality checker for cached findings
+  function findingsEqual(a, b) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (
+        a[i].category !== b[i].category ||
+        a[i].confidence !== b[i].confidence ||
+        a[i].alwaysRedact !== b[i].alwaysRedact ||
+        a[i].element !== b[i].element ||
+        a[i].name !== b[i].name ||
+        a[i].id !== b[i].id ||
+        a[i].x !== b[i].x ||
+        a[i].y !== b[i].y ||
+        a[i].w !== b[i].w ||
+        a[i].h !== b[i].h
+      ) {
+        return false;
+      }
     }
     return true;
-  });
-}
+  }
+
+  // Check if mutation record is relevant to our scanning candidates or attributes
+  function isMutationRelevant(mutations) {
+    for (const record of mutations) {
+      if (record.type === 'attributes') {
+        return true;
+      }
+      if (record.type === 'childList') {
+        for (const node of record.addedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.matches('input, textarea, select, [contenteditable]') || node.querySelector('input, textarea, select, [contenteditable]')) {
+              return true;
+            }
+          }
+        }
+        for (const node of record.removedNodes) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            if (node.matches('input, textarea, select, [contenteditable]') || node.querySelector('input, textarea, select, [contenteditable]')) {
+              return true;
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  if (!window.hasInjectedPrivacyAgent) {
+    window.hasInjectedPrivacyAgent = true;
+
+    let cachedBoxes = getSensitiveDOMBoxes();
+
+    // Create MutationObserver
+    const observer = new MutationObserver(mutations => {
+      if (isMutationRelevant(mutations)) {
+        debouncedScan();
+      }
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['type', 'name', 'id', 'autocomplete', 'placeholder', 'aria-label', 'aria-labelledby', 'contenteditable', 'class', 'data-com-onepassword-filled', 'data-bitwarden-filled', 'data-lastpass-filled']
+    });
+
+    const debouncedScan = debounce(() => {
+      const newBoxes = getSensitiveDOMBoxes();
+      if (!findingsEqual(cachedBoxes, newBoxes)) {
+        cachedBoxes = newBoxes;
+        try {
+          chrome.runtime.sendMessage({ action: 'FIELDS_UPDATED', boxes: cachedBoxes }, () => {
+            if (chrome.runtime.lastError) {
+              // No-op
+            }
+          });
+        } catch (e) {
+          // No-op
+        }
+      }
+    }, 200);
+
+    // Listen to scroll & resize
+    window.addEventListener('scroll', debouncedScan, { passive: true });
+    window.addEventListener('resize', debouncedScan, { passive: true });
+
+    // Chrome messaging listener
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+      if (request.action === 'GET_PII_BOXES') {
+        cachedBoxes = getSensitiveDOMBoxes();
+        sendResponse({ boxes: cachedBoxes });
+      }
+      return true;
+    });
+  }
 
   window.classifyElement = classifyElement;
   window.getElementSignals = getElementSignals;
   window.getSensitiveDOMBoxes = getSensitiveDOMBoxes;
+  window.isAutofilled = isAutofilled;
 })();
