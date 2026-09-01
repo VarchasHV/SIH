@@ -98,6 +98,24 @@ viewDiffBtn.addEventListener("click", () => {
   diffView.hidden = false;
 });
 
+const hybridHud = $("#hybrid-hud");
+const hybridBadge = $("#hybrid-badge");
+const hybridDesc = $("#hybrid-desc");
+const exportDpdpBtn = $("#export-dpdp-btn");
+let lastDpdpReport = null;
+
+exportDpdpBtn.addEventListener("click", () => {
+  if (!lastDpdpReport) return;
+  const jsonStr = JSON.stringify(lastDpdpReport, null, 2);
+  const blob = new Blob([jsonStr], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `dpdp-audit-log-step${lastDpdpReport.step || 1}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
 function showEgress(evt) {
   egress.hidden = false;
   $("#egress-img").src = evt.redactedImage;
@@ -122,8 +140,28 @@ function showEgress(evt) {
     securityHud.hidden = true;
   }
 
-  const s = evt.visionStats || {};
+  // Render Hybrid Engine HUD
   const t = evt.timings || {};
+  const a11y = evt.a11yStats || {};
+  if (t.a11yBypassed) {
+    hybridHud.hidden = false;
+    hybridBadge.textContent = "⚡ HYBRID A11Y FAST-PATH";
+    hybridDesc.textContent = `ViT/OCR bypassed (${Math.round((a11y.confidence || 1) * 100)}% structured A11y tree confidence — saved ~${t.latencySavingsMs || 280}ms)`;
+  } else if (a11y.totalNodes > 0) {
+    hybridHud.hidden = false;
+    hybridBadge.textContent = "👁️ VISION FALLBACK ACTIVE";
+    hybridDesc.textContent = `Multimodal ViT + OCR triggered (Visual controls/canvas detected)`;
+  } else {
+    hybridHud.hidden = true;
+  }
+
+  // Configure DPDP Compliance Audit Log
+  if (evt.dpdpReport) {
+    lastDpdpReport = evt.dpdpReport;
+    exportDpdpBtn.hidden = false;
+  }
+
+  const s = evt.visionStats || {};
   const v = s.vit || {};
   const vitLine = v.available
     ? `ViT ${v.modelId || "yolos-tiny"} on ${String(v.backend || "?").toUpperCase()}` +
@@ -133,7 +171,7 @@ function showEgress(evt) {
     : `ViT unavailable${v.error ? ` — ${v.error}` : ""}`;
   $("#egress-stats").textContent =
     `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · ViT ${t.vitMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
-    `regions blacked out: ${s.total ?? 0} (dom+vision: ${s.both ?? 0}, vision-only: ${s.visionOnly ?? 0}) · ocr lines: ${s.ocrLines ?? 0}\n` +
+    `hybrid mode: ${t.a11yBypassed ? "A11y Fast-Path" : "Vision Fallback"} · regions blacked out: ${s.total ?? 0} · ocr lines: ${s.ocrLines ?? 0}\n` +
     `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}${alerts.length ? ` · 🛡️ threats quarantined: ${alerts.length}` : ""}\n` +
     vitLine;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);

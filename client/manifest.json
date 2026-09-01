@@ -30,6 +30,7 @@
       "js": [
         "lib/sensitive-fields.js",
         "lib/adversarial-guard.js",
+        "lib/dpdp-audit.js",
         "dlp-content-script.js",
         "content.js",
         "skeleton.js",

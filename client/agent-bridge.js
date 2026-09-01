@@ -24,13 +24,37 @@
   }
 
   async function prepare() {
-    const { profile = {} } = await chrome.storage.local.get("profile");
+    const { profile = {}, allowInsecureHttp = false } = await chrome.storage.local.get(["profile", "allowInsecureHttp"]);
 
     const skeleton = window.__PL.buildSkeleton();
     const domPiiBoxes = window.__PL.domPiiBoxes();
-
-    // Adversarial & Indirect Prompt Injection Scanning
     const securityAlerts = [];
+
+    // 1. TLS Origin & Protocol Safety Check
+    const urlObj = new URL(location.href);
+    const isInsecureHttp = urlObj.protocol === "http:" && !["localhost", "127.0.0.1"].includes(urlObj.hostname);
+    if (isInsecureHttp && !allowInsecureHttp) {
+      securityAlerts.push({
+        type: "INSECURE_TLS_WARNING",
+        reason: `Unencrypted HTTP connection (${urlObj.hostname}). TLS Safety Net recommends HTTPS.`,
+        text: location.href,
+      });
+    }
+
+    // 2. Force Credential Isolation on password & auth fields
+    document.querySelectorAll("input[type='password'], input[autocomplete*='password']").forEach((pwEl) => {
+      const rect = pwEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        domPiiBoxes.push({
+          fieldId: pwEl.getAttribute("data-pl-id") || null,
+          category: "password",
+          confidence: 1.0,
+          bbox: { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) },
+        });
+      }
+    });
+
+    // 3. Adversarial & Indirect Prompt Injection Scanning
     if (window.AdversarialGuard && typeof window.AdversarialGuard.scanAdversarialVectors === "function") {
       const threats = window.AdversarialGuard.scanAdversarialVectors(document);
       for (const t of threats) {

@@ -116,11 +116,39 @@
       }
       nodes.push(node);
     });
+    const hasCanvas = document.querySelectorAll("canvas").length > 0;
+    let labeledCount = 0;
+    let unlabeledCount = 0;
+    nodes.forEach((n) => {
+      if (n.label || n.name || n.text || n.piiCategory) {
+        labeledCount++;
+      } else {
+        unlabeledCount++;
+      }
+    });
+
+    const totalCount = nodes.length;
+    const a11yConfidence = totalCount > 0 ? labeledCount / totalCount : 1.0;
+    const a11yFastPathEligible = a11yConfidence >= 0.85 && unlabeledCount === 0 && !hasCanvas;
+
     return {
       url: location.href.split(/[?#]/)[0],
-      title: document.title,
-      viewport: { w: window.innerWidth, h: window.innerHeight, dpr },
-      scroll: { x: Math.round(window.scrollX), y: Math.round(window.scrollY) },
+      title: document.title.slice(0, 100),
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scrollX: window.scrollX,
+        scrollY: window.scrollY,
+        dpr,
+      },
+      a11yStats: {
+        totalNodes: totalCount,
+        labeledNodes: labeledCount,
+        unlabeledNodes: unlabeledCount,
+        hasCanvas,
+        confidence: Math.round(a11yConfidence * 100) / 100,
+        fastPathEligible: a11yFastPathEligible,
+      },
       nodes,
     };
   }

@@ -11,7 +11,10 @@
   <header class="masthead">
     <div class="mark" aria-hidden="true">PL</div>
     <div>
-      <p class="kicker">ON-DEVICE VISION AGENT</p>
+      <div class="title-row">
+        <p class="kicker">ON-DEVICE VISION AGENT</p>
+        <span class="dpdp-badge" title="Digital Personal Data Protection Act 2023 / Rules 2025 Compliant">🇮🇳 DPDP 2023</span>
+      </div>
       <h1>Privacy Lens</h1>
     </div>
     <span class="status-dot" id="status-dot" title="Ready"></span>
@@ -78,6 +81,11 @@
       <ul id="security-threats" class="security-threats"></ul>
     </div>
 
+    <div id="hybrid-hud" class="hybrid-hud" hidden>
+      <span class="hybrid-badge" id="hybrid-badge">⚡ HYBRID A11Y FAST-PATH</span>
+      <span class="hybrid-desc" id="hybrid-desc">ViT/OCR bypassed (100% structured A11y tree confidence)</span>
+    </div>
+
     <div class="egress" id="egress" hidden>
       <div class="egress-top">
         <p class="egress-label">Leaving this device this step</p>
@@ -103,6 +111,7 @@
       </div>
 
       <div class="egress-stats" id="egress-stats"></div>
+      <button type="button" class="ghost-button mini-btn" id="export-dpdp-btn" hidden>🇮🇳 Download DPDP 2023 Audit Log (.json)</button>
       <details><summary>Payload JSON</summary><pre id="egress-json"></pre></details>
     </div>
     <ol class="log" id="log"><li class="empty">Idle.</li></ol>

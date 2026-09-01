@@ -13,6 +13,7 @@
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
+import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
@@ -153,11 +154,21 @@ async function runAgentTask(opts) {
       fields,
       dpr: prep.skeleton.viewport.dpr,
       mode: "blackout",
+      a11yStats: prep.skeleton.a11yStats,
     });
     if (!vis?.ok) throw new Error("vision failed: " + (vis?.error || "unknown"));
 
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
+
+    // Generate India DPDP Act 2023 Compliance Audit Report
+    const dpdpReport = generateDPDPAuditReport({
+      url: prep.skeleton.url,
+      step,
+      detections: prep.domPiiBoxes,
+      securityAlerts: prep.securityAlerts || [],
+      hybridStats: vis.timings || {},
+    });
 
     // 4. SANITIZE SKELETON: PRESERVE CENSORED NODES WITH LOCAL FILL TOKENS, STRIP REAL DATA LEAKS
     const sanitizedNodes = prep.skeleton.nodes.map((node) => {
@@ -207,6 +218,8 @@ async function runAgentTask(opts) {
       rawImage: shot,
       redactedImage: vis.redactedDataURL,
       securityAlerts: prep.securityAlerts || [],
+      dpdpReport,
+      a11yStats: prep.skeleton.a11yStats,
       visionStats: vis.stats,
       timings: vis.timings,
     });
