@@ -35,6 +35,7 @@ class SkeletonNode(BaseModel):
     isCensored: bool = False
     hasFill: Optional[bool] = None
     fillToken: Optional[str] = None
+    skip: Optional[bool] = None  # client retired this field (dead/unfillable) — do not target
 
 
 class Skeleton(BaseModel):

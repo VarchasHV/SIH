@@ -37,7 +37,7 @@ moment, and types them in.
 
 | Path | What |
 |---|---|
-| `client/` | MV3 extension (Chrome + Firefox). Plain JS, no bundler. |
+| `client/` | Cross-browser MV3 extension (**Google Chrome** and **Mozilla Firefox**). Plain JS, no bundler. |
 | `client/lib/*.mjs` | Shared logic: `pii-rules` (regex + Verhoeff/Luhn), `tokenizer` (vault), `redact` (canvas), `merge`, `field-classifier`, `agent-client`. |
 | `client/offscreen.*` | On-device OCR + face detection + redaction. |
 | `server/` | FastAPI agent. `VLM_MODE=gemini` (default), `openai` (any OpenAI-compatible VLM), or `mock` (offline). |
@@ -112,12 +112,18 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 
 ## Status / limitations
 
-- On-device vision is deliberately **light** (Tesseract OCR + BlazeFace). The DOM
-  classifier is primary; the vision channel (a) redacts PII values it OCRs and
-  (b) **names fields the DOM can't** by pairing the nearest OCR caption with an
-  unclassified field (`client/lib/label-assoc.mjs`, folded back into the skeleton
-  by the service worker). A transformer NER (Transformers.js is vendored) is the
-  next upgrade.
+- On-device vision runs **three** channels in the offscreen document:
+  1. **Vision Transformer** — YOLOS-tiny (`YolosForObjectDetection`, ViT/DETR
+     family, int8, 9.4 MB) via Transformers.js + ONNX Runtime Web,
+     **WebGPU with WASM(SIMD) fallback** (`client/lib/vision-transformer.mjs`).
+     Its `person` detections join the redaction merge (a face detector misses a
+     torso; the ViT doesn't); its full COCO label set is the "what is on screen"
+     signal. The backend that actually ran is reported in the popup.
+  2. **Tesseract OCR** (WASM) — reads on-screen text; PII values found in it are
+     redacted, and captions **name fields the DOM can't**
+     (`client/lib/label-assoc.mjs`, folded back into the skeleton).
+  3. **BlazeFace** (MediaPipe, WASM) — faces.
+  All model weights are vendored; inference makes no network call.
 - The field classifier does three passes: exact (`type`/`autocomplete`/`name`/
   `<label>`), fuzzy (letters-only substring match for obfuscated names like
   `02frstname`, `24emailadr`), and spatial (caption in a sibling grid/table cell).
@@ -125,5 +131,6 @@ Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.h
 - Still weak: `<select>` triples sharing one caption (mm/dd/yy), Shadow DOM.
 - The `mock` agent is deterministic and makes the pipeline run offline; it's also
   the automatic fallback when a real VLM errors.
-- Firefox: MV3 + offscreen differ slightly; a background-page shim is noted in
-  `client/offscreen.js` comments.
+- **Cross-Browser Support (Chrome & Firefox)**: Fully compatible with both Google Chrome (using `chrome.offscreen` + WebGPU/WASM) and Mozilla Firefox (using native background vision dispatcher + Gecko MV3 manifest). In Firefox, load temporarily via `about:debugging#/runtime/this-firefox` -> **Load Temporary Add-on** -> select `client/manifest.json`.
+- **Adversarial Guard & Threat Model**: `client/lib/adversarial-guard.mjs` provides an on-device first-line heuristic defense against prompt injections, leetspeak variants (`1gn0re`), zero-width Unicode steganography (`\u200B`), hidden styles, and attribute injections (`alt`/`aria-label`/`title`). *Known Limitation*: As a heuristic regex layer, it catches known attack signatures and obfuscations, but is not a full semantic NLP classifier for arbitrary open-ended paraphrases. It operates in defense-in-depth alongside structural DLP tokenization, zero-PII skeleton filtering, and human-in-the-loop gates.
+

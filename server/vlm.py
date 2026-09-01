@@ -28,9 +28,30 @@ _SUBMIT_WORDS = re.compile(r"\b(submit|send the form|complete and submit|and sub
 _NO_SUBMIT_WORDS = re.compile(r"\b(don'?t submit|do not submit|stop before submit|without submitting|no submit)\b", re.I)
 
 
+# Defense-in-depth: the client scrubs the free-form goal before egress, but the
+# server must not trust that. Redact formatted PII from the goal before it ever
+# reaches the model or the logs.
+_GOAL_PII_RES = [
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),          # email
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),                                        # SSN
+    re.compile(r"(?<!\d)(?:\d[\s-]?){13,19}(?!\d)"),                             # card
+    re.compile(r"(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)"),                     # Aadhaar
+    re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b"),                                       # PAN
+    re.compile(r"(?:\+?91[\s-]?)?[6-9]\d{9}\b"),                                 # phone (IN)
+    re.compile(r"\b[A-Z]{4}0[A-Z0-9]{6}\b"),                                     # IFSC
+]
+
+
+def _scrub_goal(goal: str) -> str:
+    out = (goal or "")[:600]
+    for rx in _GOAL_PII_RES:
+        out = rx.sub("[REDACTED]", out)
+    return out
+
+
 def _context_json(req: StepRequest) -> str:
     return json.dumps({
-        "taskGoal": req.taskGoal,
+        "taskGoal": _scrub_goal(req.taskGoal),
         "step": req.step,
         "skeleton": req.skeleton.model_dump(exclude_none=True),
         "visionDetections": [d.model_dump() for d in req.visionDetections],
@@ -146,11 +167,19 @@ def _openai(req: StepRequest) -> StepResponse:
 # --------------------------------------------------------------------------
 def _mock(req: StepRequest) -> StepResponse:
     actions: list[Action] = []
+    # a field that was targeted before but is still empty has no local data — don't retry it
+    tried_empty = {
+        h.action.get("targetId")
+        for h in req.history
+        if h.action and h.action.get("action") in ("type", "select")
+    }
     handled = {h.action.get("targetId") for h in req.history if h.action}
     for node in req.skeleton.nodes:
         if len(actions) >= 4:
             break
-        if not node.visible or node.state in ("filled", "readonly", "disabled") or node.id in handled:
+        if not node.visible or node.skip or node.state in ("filled", "readonly", "disabled"):
+            continue
+        if node.id in handled or node.id in tried_empty:
             continue
         if node.isCensored:
             if node.hasFill:
@@ -159,8 +188,11 @@ def _mock(req: StepRequest) -> StepResponse:
                                       reason=f"fill tokenized field via local token {token}"))
         else:
             if node.tag in ("input", "textarea"):
+                # only fill if the client resolved a local value for this field
+                if not (node.hasFill or node.fillToken):
+                    continue
                 category = node.piiCategory or "full name"
-                actions.append(Action(action="type", targetId=node.id, piiCategory=category, fillToken=f"local:{category}",
+                actions.append(Action(action="type", targetId=node.id, piiCategory=category, fillToken=node.fillToken or f"local:{category}",
                                       reason=f"fill {category} from local profile"))
             elif node.tag == "select" and node.options:
                 opt = next((o for o in node.options if o.get("label", "").strip().lower() in ("india", "in", "male", "female", "mr", "mrs", "ms")), node.options[0] if node.options else None)
