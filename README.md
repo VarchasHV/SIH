@@ -112,17 +112,44 @@ npm run fixtures                     # http://localhost:4173  (the demo forms)
 - **Egress preview**: the popup shows the byte-for-byte payload each step; the
   headless eval asserts no profile value ever appears in it.
 
-## Evaluation (maps to the 5 SIH metrics)
+## Benchmark Results
 
-| # | Metric | Where |
-|---|---|---|
-| 1 | Visual-context accuracy (25%) | `eval.html` — structure recall; extension fuses OCR + screenshot on top |
-| 2 | PII detection precision/recall (20%) | `npm run eval` — field classifier + value regex, with a labelled corpus |
-| 3 | Redaction precision (20%) | `eval.html` — pixel IoU / leak score (`redact.mjs` `leakScore`) |
-| 4 | Client resource use (20%) | extension Activity panel — per-step OCR/face/redact ms, heap, WebGPU adapter |
-| 5 | End-to-end latency (15%) | extension Activity panel — capture → vision → network → execute |
+Full detail + reproduction commands in **[`BENCHMARK_REPORT.md`](BENCHMARK_REPORT.md)**,
+**[`SIH_SCORECARD.md`](SIH_SCORECARD.md)**, **[`COMPETITOR_BENCHMARK.md`](COMPETITOR_BENCHMARK.md)**,
+machine-readable **[`benchmark-results.json`](benchmark-results.json)**. Audit of the
+prior state in [`AUDIT.md`](AUDIT.md).
 
-Run `node scripts/serve.mjs . 4173` then open `http://localhost:4173/eval/eval.html`.
+```bash
+npm run bench                                       # detection (span-level, A/B/C/D classes)
+npm run bench:redaction                             # redaction leakage vs ground truth
+npm run bench:latency                               # detector latency percentiles + env
+npm run bench:screens                               # screen fusion/redaction geometry
+node eval/experiments/privacy-egress.mjs            # raw PII bytes to server (A vs B vs C)
+npm run bench:competitors                           # Presidio / spaCy (if installed)
+node scripts/aggregate-benchmarks.mjs               # -> benchmark-results.json + BENCHMARK_REPORT.md
+```
+
+**MEASURED** (commit `78d05d8`, Apple M3 / Node v24, seed `20260902`):
+
+| What | Result |
+|---|---|
+| PII detection (span-level, 8.5k adversarial corpus) | **P 99.2% · R 84.1% · F1 91.0%** |
+| — by class | A-contextual 93.8% · B-unlabelled 57.1% · **D adversarial-neg 0.8% FP** |
+| — Unicode (Arabic/Persian/Devanagari/fullwidth) | ~90% recall (0% without normalization) |
+| Redaction leakage vs ground-truth spans | **14.7%** overall · 6.0% on labelled PII · 1.0% composite |
+| Detector latency (warm, 25.5k samples) | p50 **2.5µs** · p95 7.1µs · p99 10.5µs · cold ~0.9ms |
+| Screen fusion (geometry, perfect-OCR ceiling) | visual recall 78.9% · precision 100% · bbox IoU 90.9% |
+| Privacy experiment — raw PII bytes to server | A **3794** → B 960 → C **535** (85.9% reduction); task-goal PII → **0** |
+| Competitors, same corpus (2.5k, category-set) | Presidio F1 **39.4%** · spaCy F1 **9.8%** |
+
+**NOT MEASURED** (need a real browser / live VLM / cloud credentials): end-to-end
+latency, OCR/ViT/face stage latency, pixel-space redaction leakage, the agent
+action-correctness harness (`eval/agent-eval.mjs`, needs a server), and AWS
+Comprehend / Google Cloud DLP / Azure PII. These are marked `NOT MEASURED` in
+the scorecard — not estimated.
+
+The old `eval.html` in-browser harness and `npm run eval` still exist for
+manual checks; `node scripts/serve.mjs . 4173` then open `/eval/eval.html`.
 
 ## Status / limitations
 
