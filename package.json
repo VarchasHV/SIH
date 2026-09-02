@@ -21,6 +21,7 @@
     "bench:privacy": "node eval/experiments/privacy-egress.mjs",
     "bench:competitors": ".venv/bin/python3 eval/bench/competitors/run_competitors.py --limit 2500",
     "bench:aggregate": "node scripts/aggregate-benchmarks.mjs",
+    "sec:lab": "node security-lab/gen-lab.mjs --seed 20260902 && node eval/security/run.mjs",
     "bench:all": "npm run bench && npm run bench:redaction && npm run bench:latency && npm run bench:screens && npm run bench:privacy && npm run bench:aggregate",
     "bench:large": "node eval/bench/gen-corpus.mjs --seed 20260902 --total 100000 --out eval/bench/corpus-100k.jsonl && node eval/bench/run.mjs --corpus eval/bench/corpus-100k.jsonl && node eval/bench/redaction.mjs --corpus eval/bench/corpus-100k.jsonl",
     "eval:agent": "node eval/agent-eval.mjs",

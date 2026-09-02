@@ -1,6 +1,6 @@
 # Benchmark Report
 
-Generated 2026-09-02T15:30:02.537Z · commit `78d05d8` (dirty) · Apple M3 · Node v24.16.0 · Darwin 25.6.0
+Generated 2026-09-02T16:03:28.029Z · commit `3ca3036` (dirty) · Apple M3 · Node v24.16.0 · Darwin 25.6.0
 
 Every number here is a **measurement**. Where something was not run it says so. Regenerate: `npm run bench && npm run bench:redaction && npm run bench:latency && npm run bench:screens && node eval/experiments/privacy-egress.mjs && .venv/bin/python eval/bench/competitors/run_competitors.py && node scripts/aggregate-benchmarks.mjs`
 

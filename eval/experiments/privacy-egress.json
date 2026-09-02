@@ -2,8 +2,8 @@
   "experiment": "privacy-egress (A vs B vs C)",
   "version": 1,
   "environment": {
-    "timestamp": "2026-09-02T15:30:02.193Z",
-    "gitCommit": "78d05d8",
+    "timestamp": "2026-09-02T16:03:27.679Z",
+    "gitCommit": "3ca3036",
     "gitBranch": "working",
     "gitDirty": true,
     "nodeVersion": "v24.16.0",

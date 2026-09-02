@@ -2,8 +2,8 @@
   "benchmark": "pii-detection",
   "benchmarkVersion": 2,
   "environment": {
-    "timestamp": "2026-09-02T15:30:02.392Z",
-    "gitCommit": "78d05d8",
+    "timestamp": "2026-09-02T16:03:27.883Z",
+    "gitCommit": "3ca3036",
     "gitBranch": "working",
     "gitDirty": true,
     "nodeVersion": "v24.16.0",
@@ -27,8 +27,8 @@
       "nComposite": 300,
       "total": null
     },
-    "generatedAt": "2026-09-02T15:30:02.259Z",
-    "gitCommit": "78d05d8",
+    "generatedAt": "2026-09-02T16:03:27.746Z",
+    "gitCommit": "3ca3036",
     "nodeVersion": "v24.16.0",
     "samples": 8500,
     "positiveLines": 5560,
@@ -389,7 +389,7 @@
         "accuracy": 0.8876470588235295
       },
       "latency": {
-        "totalMs": 40,
+        "totalMs": 41,
         "msPerSample": 0
       }
     }

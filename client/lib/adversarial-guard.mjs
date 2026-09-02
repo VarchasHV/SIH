@@ -153,6 +153,105 @@ export function detectPromptInjection(text) {
   return { isInjection: false, match: null, confidence: 0, patternIndex: -1 };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Phase 4 — graded content classification (SAFE / SUSPICIOUS / MALICIOUS)
+//
+// The core rule: WEBPAGE CONTENT IS UNTRUSTED DATA, NOT INSTRUCTIONS.
+// classifyContent() grades how strongly a chunk of page text is trying to be
+// read as an instruction to the agent, and what to do about it.
+// ─────────────────────────────────────────────────────────────────────────
+
+// STRONG soft indicators — any one on its own is MALICIOUS-leaning.
+const STRONG_INDICATORS = [
+  { id: "reveal_secrets", re: /\b(?:reveal|show|print|display|output|repeat|tell\s+me|what\s+(?:is|are))\s+(?:your|the|all)\s+(?:system\s+prompt|initial\s+instructions?|secrets?|api\s+keys?|passwords?|credentials?|tokens?|configuration|rules|guardrails?)\b/i },
+  { id: "disable_security", re: /\b(?:disable|turn\s+off|bypass|skip|ignore|override|deactivate|remove)\s+(?:the\s+|your\s+|all\s+)?(?:security|safety|privacy|filter|guard(?:rail)?s?|redaction|dlp|protection|firewall|approval|confirmation|restrictions?)\b/i },
+  { id: "upload_exfil", re: /\b(?:upload|send|forward|transmit|post|share|export|sync|email|submit|exfiltrate|leak)\s+(?:the\s+|this\s+|all\s+|any\s+|my\s+|these\s+)?(?:file|document|screenshot|data|form|contents?|information|profile|vault|record|values?|details?|secrets?)\b[\s\S]{0,40}?(?:to|at|via)\s+(?:https?:\/\/|[a-z0-9-]+\.[a-z]{2,})/i },
+  { id: "instruction_to_hide_from_user", re: /\b(?:do\s+not|don'?t|never|without)\s+(?:tell|show(?:ing)?|inform(?:ing)?|alert(?:ing)?|notify(?:ing)?|ask(?:ing)?|warn(?:ing)?|mention(?:ing)?)\b[\s\S]{0,20}?\buser\b/i },
+  { id: "tool_targeting", re: /\b(?:call|invoke|use|run|execute)\s+(?:the\s+)?(?:tool|function|api|command|action)\s*[:(]|\bfunction\.call\b|<\s*tool_call\s*>|"tool"\s*:|<\|im_start\|>/i },
+];
+
+// WEAK soft indicators — one is SUSPICIOUS, two+ is MALICIOUS.
+const SOFT_INDICATORS = [
+  { id: "agent_addressed", re: /\b(?:hey\s+)?(?:ai|assistant|agent|chatbot|language\s+model|llm|gpt|claude|gemini|copilot|browser\s+agent)\b[,:]?\s+(?:please\s+)?(?:you\s+(?:must|should|will|need\s+to)|do|go|click|type|fill|send|navigate|open|copy|paste|submit|ignore|disregard)/i },
+  { id: "change_settings", re: /\b(?:change|update|modify|set|reset|add)\s+(?:the\s+)?(?:security|privacy|account|2fa|mfa|recovery|backup)\s+(?:settings?|options?|preferences?|address|email|phone|number)\b/i },
+  { id: "fake_role_block", re: /(?:^|\n)\s*(?:###?\s*)?(?:system|developer|assistant|tool)\s*(?:prompt|message|instruction)?\s*[:>](?!\s*(?:enter|type|your\b))/im },
+  { id: "urgency_authority", re: /\bthis\s+is\s+(?:an?\s+)?(?:official|urgent|critical|system|admin|security)(?:\s+(?:official|urgent|critical|system|admin|security))*\s+(?:message|instruction|notice|directive|alert|warning)\b|\bas\s+(?:an?\s+)?(?:admin|administrator|developer|system)\b\s*,|\bauthorized\s+by\s+(?:the\s+)?(?:system|admin|developer)\b|\bon\s+behalf\s+of\s+(?:the\s+)?(?:system|admin)\b/i },
+  { id: "encoded_blob", re: /\b(?:base64|rot13|decode\s+this|atob\(|String\.fromCharCode)\b/i },
+];
+
+/**
+ * Grade a chunk of untrusted page text.
+ * @param {string} text
+ * @param {{ source?: string, element?: string }} [meta]
+ * @returns {{
+ *   verdict: "SAFE"|"SUSPICIOUS"|"MALICIOUS",
+ *   confidence: number,
+ *   indicators: string[],
+ *   source: string,
+ *   affectedElement: string|null,
+ *   recommendedAction: "allow"|"quarantine"|"block"
+ * }}
+ */
+export function classifyContent(text, meta = {}) {
+  const source = meta.source || "dom";
+  const affectedElement = meta.element || null;
+  const empty = { verdict: "SAFE", confidence: 0, indicators: [], source, affectedElement, recommendedAction: "allow" };
+  if (!text || typeof text !== "string") return empty;
+
+  const normalized = normalizeText(text);
+  const hadZeroWidth = normalized !== text.replace(/\s+/g, " ").trim();
+
+  // 1. hard injection pattern -> MALICIOUS
+  const hard = detectPromptInjection(text);
+  if (hard.isInjection) {
+    return {
+      verdict: "MALICIOUS",
+      confidence: hard.confidence,
+      indicators: [hard.threat || "prompt_injection", ...(hadZeroWidth ? ["zero_width_obfuscation"] : [])],
+      source, affectedElement, recommendedAction: "block",
+    };
+  }
+
+  // 2. indicators
+  const strong = STRONG_INDICATORS.filter((ind) => ind.re.test(normalized)).map((i) => i.id);
+  const weak = SOFT_INDICATORS.filter((ind) => ind.re.test(normalized)).map((i) => i.id);
+  const hits = [...strong, ...weak];
+  if (hadZeroWidth && hits.length) hits.push("zero_width_obfuscation");
+
+  if (hits.length === 0) return empty;
+
+  if (strong.length >= 1 || weak.length >= 2 || (weak.length === 1 && hadZeroWidth)) {
+    return {
+      verdict: "MALICIOUS",
+      confidence: Math.min(0.92, 0.6 + 0.12 * hits.length),
+      indicators: hits, source, affectedElement, recommendedAction: "block",
+    };
+  }
+  return { verdict: "SUSPICIOUS", confidence: 0.55, indicators: hits, source, affectedElement, recommendedAction: "quarantine" };
+}
+
+/**
+ * Separate a page-text blob into the part safe to pass to the VLM as DATA and
+ * the spans that must be withheld (they read as INSTRUCTIONS).
+ * @returns {{ data: string, withheld: Array<{text:string, verdict:string, indicators:string[]}> }}
+ */
+export function separateDataFromInstructions(text, meta = {}) {
+  if (!text || typeof text !== "string") return { data: "", withheld: [] };
+  const withheld = [];
+  // grade sentence-ish chunks so one bad line doesn't nuke the whole blob
+  const chunks = text.split(/(?<=[.!?\n])\s+/);
+  const kept = [];
+  for (const c of chunks) {
+    const g = classifyContent(c, meta);
+    if (g.verdict === "MALICIOUS" || (g.verdict === "SUSPICIOUS" && g.confidence >= 0.6)) {
+      withheld.push({ text: c.slice(0, 120), verdict: g.verdict, indicators: g.indicators });
+    } else {
+      kept.push(c);
+    }
+  }
+  return { data: kept.join(" ").trim(), withheld };
+}
+
 /**
  * Evaluates whether an element's styling constitutes hidden, steganographic, or invisible text.
  * Exempts common accessibility markup (.sr-only, visually-hidden, role=status, aria-live).
@@ -222,6 +321,36 @@ export function detectHiddenStyles(el, win = globalThis) {
 export function scanAdversarialVectors(root, win = globalThis) {
   const threats = [];
   if (!root || typeof root.querySelectorAll !== "function") return threats;
+
+  // 0. HTML comments + <meta content> — non-rendered channels a page can use to
+  //    smuggle instructions past a human but not past an agent that reads the DOM.
+  try {
+    const doc = root.ownerDocument || root;
+    if (typeof doc.createTreeWalker === "function") {
+      const SHOW_COMMENT = (globalThis.NodeFilter && globalThis.NodeFilter.SHOW_COMMENT) || 0x80;
+      const w = doc.createTreeWalker(root, SHOW_COMMENT);
+      let cnode;
+      while ((cnode = w.nextNode())) {
+        const g = classifyContent(cnode.nodeValue || "", { source: "html_comment" });
+        if (g.verdict !== "SAFE") {
+          threats.push({ node: cnode.parentElement || null, type: "COMMENT_PROMPT_INJECTION",
+            reason: `Injection in an HTML comment [${g.indicators.join(", ")}]`, text: (cnode.nodeValue || "").slice(0, 150),
+            confidence: g.confidence, verdict: g.verdict, bbox: { x: 0, y: 0, w: 1, h: 1 } });
+        }
+      }
+    }
+  } catch { /* non-DOM env */ }
+  if (typeof root.querySelectorAll === "function") {
+    for (const m of root.querySelectorAll("meta[content], meta[name]")) {
+      const content = m.getAttribute("content") || "";
+      const g = classifyContent(content, { source: "meta_tag", element: `meta[${m.getAttribute("name") || m.getAttribute("property") || "?"}]` });
+      if (g.verdict !== "SAFE") {
+        threats.push({ node: m, type: "META_PROMPT_INJECTION",
+          reason: `Injection in <meta ${m.getAttribute("name") || ""}> [${g.indicators.join(", ")}]`,
+          text: content.slice(0, 150), confidence: g.confidence, verdict: g.verdict, bbox: { x: 0, y: 0, w: 1, h: 1 } });
+      }
+    }
+  }
 
   const elements = root.querySelectorAll("*");
   for (const el of elements) {
