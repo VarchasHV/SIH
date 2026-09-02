@@ -16,7 +16,7 @@ import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
-import { assertNoSensitivePayload } from "./lib/egress-guard.mjs";
+import { enforceEgressPolicy } from "./lib/security-policy.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
@@ -133,12 +133,22 @@ function emit(evt) {
 
 // popup can resolve a gate (send / submit) via PL_GATE_RESOLVE
 const gates = new Map();
-function waitForGate(id, kind) {
-  emit({ type: "gate", id, kind });
+function waitForGate(id, kind, meta = null) {
+  emit({ type: "gate", id, kind, meta });
   return new Promise((resolve) => {
     const t = setTimeout(() => { gates.delete(id); resolve(false); }, 90000); // auto-deny if popup is gone
     gates.set(id, (approved) => { clearTimeout(t); resolve(approved); });
   });
+}
+
+// { "pii:email": 2, "secret:aws...": 1 } -> { email: 2 }
+function countsToByCategory(counts) {
+  const out = {};
+  for (const [k, v] of Object.entries(counts || {})) {
+    const cat = k.includes(":") ? k.split(":").slice(1).join(":") : k;
+    out[cat] = (out[cat] || 0) + v;
+  }
+  return out;
 }
 
 // ---- the loop --------------------------------------------------------
@@ -283,21 +293,35 @@ async function runAgentTask(opts) {
       history: history.slice(-8),
     };
 
-    // 5b. AUTOMATED EGRESS PRIVACY GATE (Phase 10): walk the exact bytes about
-    //     to leave the browser. Raw profile values or structural PII in any
-    //     string -> redact in place; a RESTRICTED category -> hard block.
-    const gate = assertNoSensitivePayload(payload, { profile: prep.profileValues || {} });
-    if (!gate.ok) {
-      if (gate.blocked) {
-        emit({ type: "error", step, where: "egress gate", retryable: false,
-               message: `Blocked: restricted PII in the outbound payload (${Object.keys(gate.summary.byCategory).join(", ")}). Nothing was sent.` });
-        history.push({ step, error: "egress gate: restricted PII blocked" });
-        break;
-      }
-      // non-restricted: sanitize and continue, log metadata only (never values)
-      payload = gate.sanitized;
-      emit({ type: "egress-redacted", step, byCategory: gate.summary.byCategory, total: gate.summary.totalFindings });
+    // 5b. SECURITY POLICY ENGINE — the egress choke point. Walks the exact bytes
+    //     about to leave the browser: PII, secrets/credentials, canary tokens,
+    //     raw profile values. Decision: ALLOW / SANITIZE / BLOCK / REQUIRE_APPROVAL.
+    const gate = enforceEgressPolicy(payload, {
+      profile: prep.profileValues || {},
+      destination: cfg.serverUrl,
+      destinationTrust: /^https:\/\/(localhost|127\.0\.0\.1)/.test(cfg.serverUrl) || /^http:\/\/(localhost|127\.0\.0\.1)/.test(cfg.serverUrl) ? 1 : 0.6,
+    });
+    emit({ type: "security-classification", step, decision: gate.result.decision, classification: gate.result.classification, counts: gate.result.summary.counts });
+    if (gate.blocked) {
+      emit({ type: "error", step, where: "security policy", retryable: false,
+             message: `BLOCKED: ${gate.result.reasons.join("; ")}. Nothing was sent to the server.` });
+      history.push({ step, error: `egress blocked: ${gate.result.classification}` });
+      break;
     }
+    if (gate.needsApproval) {
+      const ok = await waitForGate(`approve-egress-${step}`, "approval", {
+        title: "Send this context to the AI?",
+        risk: gate.result.classification,
+        reasons: gate.result.reasons,
+        counts: gate.result.summary.counts,
+        destination: gate.result.summary.destination,
+      });
+      if (!ok) { emit({ type: "cancelled", step, reason: "egress not approved" }); break; }
+    }
+    if (gate.result.decision === "SANITIZE") {
+      emit({ type: "egress-redacted", step, byCategory: countsToByCategory(gate.result.summary.counts), total: gate.result.findings.length });
+    }
+    payload = gate.payload;
 
     sanitizedPayloadForPreview = { ...payload, screenshot: "<blacked-out image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
 

@@ -290,12 +290,27 @@ function showEgress(evt) {
 // ---- gates ---------------------------------------------------
 const gate = $("#gate");
 let pendingGateId = null;
-function showGate(id, kind) {
+function showGate(id, kind, meta) {
   pendingGateId = id;
   gate.hidden = false;
-  $("#gate-text").textContent = kind === "submit"
-    ? "The agent wants to SUBMIT the form. Allow?"
-    : "Send this blacked-out context to the server?";
+  if (kind === "approval" && meta) {
+    // structured security-approval explanation — categories only, never values
+    const cats = Object.keys(meta.counts || {}).map((k) => k.replace(/^(pii|secret):/, "")).filter(Boolean);
+    $("#gate-text").innerHTML =
+      `<strong>⚠️ SECURITY APPROVAL REQUIRED</strong><br>` +
+      `${meta.title || "Send this context to the AI?"}<br><br>` +
+      `<b>Risk:</b> ${meta.risk || "?"}<br>` +
+      (meta.destination ? `<b>Destination:</b> ${escapeHtml(meta.destination)}<br>` : "") +
+      (cats.length ? `<b>Detected:</b> ${cats.map(escapeHtml).join(", ")}<br>` : "") +
+      (meta.reasons?.length ? `<br>${meta.reasons.map(escapeHtml).join("<br>")}` : "");
+  } else {
+    $("#gate-text").textContent = kind === "submit"
+      ? "The agent wants to SUBMIT the form. Allow?"
+      : "Send this blacked-out context to the server?";
+  }
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 function resolveGate(approved) {
   if (!pendingGateId) return;
@@ -319,7 +334,10 @@ chrome.runtime.onMessage.addListener((m) => {
     case "egress-redacted":
       log(`🛡️ egress gate redacted ${e.total} PII item(s) before sending: ${Object.entries(e.byCategory).map(([k, v]) => `${k}×${v}`).join(", ")}`, "err");
       break;
-    case "gate": showGate(e.id, e.kind); break;
+    case "gate": showGate(e.id, e.kind, e.meta); break;
+    case "security-classification":
+      log(`security: ${e.decision} · ${e.classification}${Object.keys(e.counts || {}).length ? " · " + Object.entries(e.counts).map(([k, v]) => `${k}×${v}`).join(", ") : ""}`, e.decision === "ALLOW" ? "ok" : "err");
+      break;
     case "plan":
       log(`server: ${e.rationale || "(plan)"} · ${e.actions.length} action(s) · ${e.roundTripMs}ms`);
       break;
