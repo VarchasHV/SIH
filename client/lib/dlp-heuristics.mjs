@@ -86,7 +86,8 @@ export const DLP_RULES = [
     category: "card_expiry",
     token: "[TOKEN_CARD_EXPIRY]",
     attrRegex: /\b(card[_\s]?exp(ir(y|ation))?|exp[_\s]?date|cc[_\s]?exp|ccexp)\b/i,
-    textRegex: /\b(0[1-9]|1[0-2])[/-](\d{2}|\d{4})\b/,
+    // MM/YY or MM/YYYY as a standalone token — not a slice of a DD/MM/YYYY date
+    textRegex: /(?<![\d/.\-])(0[1-9]|1[0-2])[/-](\d{2}|\d{4})\b(?![/\-.]?\d)/,
   },
   {
     category: "card_holder",
@@ -98,13 +99,18 @@ export const DLP_RULES = [
     category: "cvv",
     token: "[TOKEN_CVV]",
     attrRegex: /\b(cvv\d?|cvc\d?|security[_\s]?code|card[_\s]?sec|csc|card[_\s]?verification)\b/i,
+    // A bare 3-4 digit number is only a CVV next to a CVV field. `prose: false`
+    // stops sanitizeParagraphText() turning "transfer 500" into "[TOKEN_CVV]".
     textRegex: /(?<![\d-])\b\d{3,4}\b(?![\d-])/,
+    prose: false,
   },
   {
     category: "bank_account",
     token: "[TOKEN_BANK_ACCOUNT]",
     attrRegex: /\b(bank[_\s]?account|account[_\s]?no|account[_\s]?number|routing[_\s]?num(ber)?|iban|swift|bic|aba[_\s]?routing)\b/i,
     textRegex: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b|\b\d{9,18}\b/,
+    // in free prose only the IBAN shape is safe; a bare 9-18 digit run is not.
+    proseTextRegex: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/,
   },
   {
     category: "ifsc",
@@ -148,7 +154,9 @@ export const DLP_RULES = [
     category: "zip_code",
     token: "[TOKEN_ZIP_CODE]",
     attrRegex: /\b(zip|zip[_\s]?code|postal|postal[_\s]?code|pincode|pin[_\s]?code|postcode)\b/i,
+    // ZIP+4 is prose-safe; a bare 5/6-digit number is a year, a count, a page…
     textRegex: /\b\d{5}(?:-\d{4})?\b|\b\d{6}\b/,
+    proseTextRegex: /\b\d{5}-\d{4}\b/,
   },
   {
     category: "city",
@@ -307,11 +315,14 @@ export function sanitizeParagraphText(text) {
   if (!text || typeof text !== "string") return "";
   let sanitized = text;
 
-  // Check specific rules with text regexes
+  // Structured PII patterns. A rule that matches a bare number in a DOM field
+  // context (cvv \d{3,4}, zip \d{5}, bank \d{9,18}) is unsafe in free prose —
+  // it declares `prose: false` (skip entirely) or `proseTextRegex` (a tighter
+  // pattern to use instead). See Phase 11 / sanitizeTaskGoal.
   for (const rule of DLP_RULES) {
-    if (rule.textRegex) {
-      sanitized = sanitized.replace(new RegExp(rule.textRegex, "g"), rule.token);
-    }
+    if (rule.prose === false) continue;
+    const re = rule.proseTextRegex || rule.textRegex;
+    if (re) sanitized = sanitized.replace(new RegExp(re, "g"), rule.token);
   }
 
   // Fallback generic scanner
@@ -354,6 +365,35 @@ export function sanitizeTaskGoal(goal) {
   if (afterPii !== text) hits.push("formatted-pii");
   text = afterPii;
 
+  // 1b. Person references — keep the intent, drop the identity.
+  //   "Find John Smith's account"      -> "Find the user's account"
+  //   "transfer to Rahul Verma"        -> "transfer to the user"
+  //   "book a ticket for Mr. A. Nair"  -> "book a ticket for the user"
+  //   "log into Priya's dashboard"     -> "log into the user's dashboard"
+  const HONORIFIC = /(?:Mr|Mrs|Ms|Dr|Prof|Shri|Smt|Sri)\.?\s+/;
+  const NAME = new RegExp(`(?:${HONORIFIC.source})?[A-Z][a-z]+(?:\\s+(?:[A-Z]\\.?|[A-Z][a-z]+)){0,2}`);
+  // words that look like a name token but are really the sentence's verb/subject
+  const NOT_A_NAME = /^(The|A|An|My|Your|This|That|Their|His|Her|Our|It|I|We|You|Find|Get|Fill|Open|Log|Login|Go|Book|Pay|Send|Show|Check|Search|Look|Navigate|Click|Submit|Complete|Enter|Set|Add|Update|Download|Upload|Select|Choose|Review|Cancel|Confirm|Sign|Use)$/i;
+  // possessive: <Name>'s  ->  the user's   (keep a leading verb if the regex ate one)
+  text = text.replace(new RegExp(`\\b${NAME.source}['’]s\\b`, "g"), (m) => {
+    const parts = m.replace(/['’]s$/, "").split(/\s+/);
+    // strip leading verb/subject tokens the greedy NAME may have swallowed
+    const kept = [];
+    while (parts.length && NOT_A_NAME.test(parts[0].replace(/\.$/, ""))) kept.push(parts.shift());
+    if (parts.length === 0) return m; // it was all verbs — not a name
+    hits.push("person-name");
+    return `${kept.length ? kept.join(" ") + " " : ""}the user's`;
+  });
+  // "for|to|of <Full Name>" -> "... the user". Requires an honorific OR 2+ name
+  // tokens — a single word after "to"/"for" is too ambiguous ("fly to Delhi",
+  // "send to Rahul"); that case is left to the value-clause step below.
+  const FULLNAME = new RegExp(`(?:${HONORIFIC.source}[A-Z][A-Za-z.]+(?:\\s+[A-Z][A-Za-z.]+){0,2}|[A-Z][a-z]+\\s+[A-Z][A-Za-z.]+(?:\\s+[A-Z][a-z]+)?)`);
+  text = text.replace(new RegExp(`\\b(for|to|of)\\s+(${FULLNAME.source})(?=[\\s,.;]|$)`, "g"), (m, prep, name) => {
+    if (NOT_A_NAME.test(name.trim().split(/\s+/)[0].replace(/\.$/, ""))) return m;
+    hits.push("person-name");
+    return `${prep} the user`;
+  });
+
   // 2. Quoted literals — "John Smith", 'Flat 4B, MG Road'
   text = text.replace(/(['"“”‘’])(.{1,120}?)\1/g, (_m) => {
     hits.push("quoted-literal");
@@ -362,15 +402,21 @@ export function sanitizeTaskGoal(goal) {
 
   // 3. Values after a filler verb or assignment.
   //    "fill name with John Smith" / "set email = x" / "DOB: 01/01/1990"
-  //    Capture up to the next clause boundary (comma / "and" / ";" / end).
-  const valueClause =
-    /\b(?:with|using|as|to|is|=|:)\s+(?!(?:my|the|a|an|your|this|that|it|local|profile|saved|stored|filled|empty|blank|complete|completed|done|possible|shown|visible|required|optional|needed)\b)([^,;]+?)(?=(?:,|;|\.|\band\b|\bthen\b|$))/gi;
-  text = text.replace(valueClause, (m, val) => {
-    // keep the connective word ("with" / "to" / ":"), redact only the value
-    const connective = m.slice(0, m.length - val.length);
+  //    `with` / `=` / `:` always carry a value. `to` / `is` do too, BUT only in
+  //    a fill/set/enter/change context — otherwise "to" is directional
+  //    ("fly to Delhi", "go to checkout") and must survive.
+  const STOP = "(?:my|the|a|an|your|this|that|it|local|profile|saved|stored|filled|empty|blank|complete|completed|done|possible|shown|visible|required|optional|needed|submit|continue|checkout|next|top|bottom|home)";
+  // don't re-match text a previous step already tokenised ([TOKEN_…], the user's)
+  const val = `(?!${STOP}\\b)(?!\\[TOKEN)(?!the user)([^,;\\]]+?)(?=(?:,|;|\\.|\\]|\\band\\b|\\bthen\\b|$))`;
+  const valueClause = new RegExp(`\\b(?:with|using|as|=|:)\\s+${val}`, "gi");
+  const setToClause = new RegExp(`\\b(?:set|fill|change|update|enter|make|put|type|input)\\b[^,;]*?\\b(?:to|is|as|with)\\s+${val}`, "gi");
+  const redactValue = (m, v) => {
+    const connective = m.slice(0, m.length - v.length);
     hits.push("value-clause");
     return `${connective}[TOKEN_VALUE]`;
-  });
+  };
+  text = text.replace(setToClause, redactValue);
+  text = text.replace(valueClause, redactValue);
 
   // Tidy spacing left by clause-boundary lookaheads (e.g. "]and" -> "] and").
   text = text.replace(/\](?=[A-Za-z0-9])/g, "] ").replace(/\s+/g, " ").trim();

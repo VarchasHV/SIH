@@ -72,5 +72,16 @@ test("Hybrid A11y Fast-Path - Bypasses heavy vision inference when accessibility
   assert.equal(res.timings.a11yBypassed, true, "Heavy vision models should be bypassed on high-confidence A11y tree");
   assert.equal(res.timings.ocrMs, 0, "OCR should take 0ms when fast-path is active");
   assert.equal(res.timings.vitMs, 0, "ViT should take 0ms when fast-path is active");
-  assert.equal(res.timings.latencySavingsMs, 280, "Latency savings should be recorded");
+  assert.equal(res.timings.visionStageSkipped, true, "the skipped vision stage is flagged (no fabricated ms constant)");
+  assert.equal("latencySavingsMs" in res.timings, false, "the fabricated 280ms constant is gone");
+});
+
+test("Hybrid A11y Fast-Path - a caller-measured vision baseline is echoed, not invented", async () => {
+  const dummyShot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const res = await processVision({
+    screenshot: dummyShot, domPiiBoxes: [], fields: [], dpr: 1, mode: "blackout",
+    a11yStats: { totalNodes: 5, labeledNodes: 5, unlabeledNodes: 0, hasCanvas: false, confidence: 1, fastPathEligible: true },
+    visionStageBaselineMs: 312,
+  });
+  assert.equal(res.timings.visionStageBaselineMs, 312);
 });

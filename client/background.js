@@ -16,6 +16,7 @@ import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
+import { assertNoSensitivePayload } from "./lib/egress-guard.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
@@ -273,7 +274,7 @@ async function runAgentTask(opts) {
     }
 
     // 5. Sanitized payload sent to server — zero PII, zero raw secret values
-    const payload = {
+    let payload = {
       taskGoal: safeGoal.text,
       step,
       skeleton: sanitizedSkeleton,
@@ -281,6 +282,23 @@ async function runAgentTask(opts) {
       screenshot: vis.redactedDataURL,
       history: history.slice(-8),
     };
+
+    // 5b. AUTOMATED EGRESS PRIVACY GATE (Phase 10): walk the exact bytes about
+    //     to leave the browser. Raw profile values or structural PII in any
+    //     string -> redact in place; a RESTRICTED category -> hard block.
+    const gate = assertNoSensitivePayload(payload, { profile: prep.profileValues || {} });
+    if (!gate.ok) {
+      if (gate.blocked) {
+        emit({ type: "error", step, where: "egress gate", retryable: false,
+               message: `Blocked: restricted PII in the outbound payload (${Object.keys(gate.summary.byCategory).join(", ")}). Nothing was sent.` });
+        history.push({ step, error: "egress gate: restricted PII blocked" });
+        break;
+      }
+      // non-restricted: sanitize and continue, log metadata only (never values)
+      payload = gate.sanitized;
+      emit({ type: "egress-redacted", step, byCategory: gate.summary.byCategory, total: gate.summary.totalFindings });
+    }
+
     sanitizedPayloadForPreview = { ...payload, screenshot: "<blacked-out image, " + Math.round(vis.redactedDataURL.length / 1024) + " KB>" };
 
     emit({

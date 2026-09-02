@@ -9,7 +9,6 @@ import { detectPII } from "./pii-rules.mjs";
 import { redactCanvas } from "./redact.mjs";
 import { mergeDetections, redundancyStats } from "./merge.mjs";
 import { associateLabels } from "./label-assoc.mjs";
-import { isSensitiveCategory } from "./sensitive-fields.mjs";
 import { detectObjects, visionModelInfo } from "./vision-transformer.mjs";
 import { detectPromptInjection } from "./adversarial-guard.mjs";
 
@@ -153,7 +152,7 @@ async function runFaces(bitmap) {
   return { dets, ms: performance.now() - t0, available: true };
 }
 
-export async function processVision({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "blackout", a11yStats = null, forceVision = false }) {
+export async function processVision({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "blackout", a11yStats = null, forceVision = false, visionStageBaselineMs = null }) {
   const timings = {};
   const tAll = performance.now();
 
@@ -185,12 +184,19 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
   let vit = { dets: [], backend: "a11y_fastpath", ms: 0, loadMs: null, labels: [], available: true, gpu: { available: false } };
 
   if (useFastPath) {
-    // HYBRID A11Y FASTPATH: Skip heavy OCR / face / ViT inference on structured DOM
+    // HYBRID A11Y FASTPATH: skip OCR / face / ViT inference on structured DOM.
+    // The wall-clock saving is simply the vision-stage time that did NOT run;
+    // the Activity panel shows it directly (fast-path steps have a much lower
+    // `totalMs`). No fabricated constant — if the caller has measured the
+    // vision stage on this device it passes `visionStageBaselineMs` through.
     timings.ocrMs = 0;
     timings.faceMs = 0;
     timings.vitMs = 0;
     timings.a11yBypassed = true;
-    timings.latencySavingsMs = 280;
+    timings.visionStageSkipped = true;
+    if (typeof visionStageBaselineMs === "number") {
+      timings.visionStageBaselineMs = Math.round(visionStageBaselineMs);
+    }
   } else {
     const [ocrRes, facesRes, vitRes] = await Promise.all([
       runOCR(bitmap).catch((e) => ({ dets: [], lines: [], lineCount: 0, ms: 0, error: e.message })),
@@ -230,15 +236,18 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
   // Only the ViT's privacy-relevant classes (person) join the redaction merge
   const vitPrivacyDets = (vit.dets || []).filter((d) => d.privacy);
   const visionDets = [...ocr.dets, ...faces.dets, ...labelDets, ...vitPrivacyDets];
-  const merged = mergeDetections(domScaled, visionDets, 0.35);
-
   // fieldId -> category, for the service worker to enrich the skeleton
   const fieldCategories = {};
   for (const d of labelDets) fieldCategories[d.fieldId] = d.category;
 
-  // redact: union of every merged region whose category the shared module flags as sensitive
+  const merged = mergeDetections(domScaled, visionDets, 0.35, {
+    redactThreshold: 0.5,
+    domFieldCategories: fieldCategories,
+  });
+
+  // redact: every merged detection whose documented privacy-risk decision says so
   const regions = merged
-    .filter((m) => isSensitiveCategory(m.category) || m.category === "face" || m.category === "person")
+    .filter((m) => m.redact)
     .map((m) => ({ ...m.bbox, category: m.category }));
   const tRedact = performance.now();
   const applied = redactCanvas(canvas, regions, { mode });
@@ -264,6 +273,9 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
       category: m.category,
       confidence: Number(m.confidence.toFixed(2)),
       sources: m.sources,
+      privacyRisk: m.privacyRisk,
+      redact: m.redact,
+      reason: m.reason,
       bbox: roundBox(m.bbox),
       fieldId: m.fieldId,
     })),

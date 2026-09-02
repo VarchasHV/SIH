@@ -203,6 +203,17 @@ const UPI_HANDLES = new Set([
 const OCR_FIX = { O: "0", o: "0", I: "1", l: "1", S: "5", B: "8", Z: "2", G: "6", g: "9", D: "0", Q: "0" };
 const fixOcrDigits = (s) => s.replace(/[OoIlSBZGgDQ]/g, (c) => OCR_FIX[c] || c);
 
+// Dot-separated numeric strings that are NOT grouped PII: IPv4 ("164.154.182.151"),
+// version/build strings ("10.0.19045.3803"), etc. These strip to a 12- or
+// 16-digit run that can pass Verhoeff/Luhn by chance and be mislabelled
+// Aadhaar/card. Aadhaar and card *dot* surface forms use uniform 4-digit
+// groups ("2345.6789.0124"), so a run with a "." where any dot-group is not
+// exactly 4 digits is treated as non-PII and left to the `ipv4` rule.
+function isDottedNonPii(raw) {
+  if (!raw.includes(".")) return false;
+  return !raw.split(".").every((g) => /^\d{4}$/.test(g));
+}
+
 function scanNumericRuns(norm) {
   const hits = [];
   // maximal run of digits with internal separators (space/hyphen/dot, up to 2
@@ -213,6 +224,8 @@ function scanNumericRuns(norm) {
     const raw = m[1];
     const start = m.index;
     const end = start + raw.length;
+    // IPv4 / version strings are not numeric PII — leave them to the `ipv4` rule.
+    if (isDottedNonPii(raw)) continue;
     let digits = raw.replace(/\D/g, "");
     // OCR-confusion retry for the region around the run (letters glued to digits)
     if (digits.length < 10) {

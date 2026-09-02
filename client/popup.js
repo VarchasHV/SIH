@@ -252,7 +252,10 @@ function showEgress(evt) {
   if (t.a11yBypassed) {
     hybridHud.hidden = false;
     hybridBadge.textContent = "⚡ HYBRID A11Y FAST-PATH";
-    hybridDesc.textContent = `ViT/OCR bypassed (${Math.round((a11y.confidence || 1) * 100)}% structured A11y tree confidence — saved ~${t.latencySavingsMs || 280}ms)`;
+    const baseline = typeof t.visionStageBaselineMs === "number"
+      ? ` — vision stage (~${t.visionStageBaselineMs}ms measured) skipped`
+      : ` — this step ${t.totalMs ?? "?"}ms vs a vision-fallback step`;
+    hybridDesc.textContent = `ViT/OCR bypassed (${Math.round((a11y.confidence || 1) * 100)}% structured A11y tree confidence)${baseline}`;
   } else if (a11y.totalNodes > 0) {
     hybridHud.hidden = false;
     hybridBadge.textContent = "👁️ VISION FALLBACK ACTIVE";
@@ -313,6 +316,9 @@ chrome.runtime.onMessage.addListener((m) => {
       log(`goal scrubbed before egress (${e.hits.join(", ")}); sent: "${e.sanitized}"`, "err");
       break;
     case "egress": showEgress(e); log(`censored with black boxes (step ${e.step})`); break;
+    case "egress-redacted":
+      log(`🛡️ egress gate redacted ${e.total} PII item(s) before sending: ${Object.entries(e.byCategory).map(([k, v]) => `${k}×${v}`).join(", ")}`, "err");
+      break;
     case "gate": showGate(e.id, e.kind); break;
     case "plan":
       log(`server: ${e.rationale || "(plan)"} · ${e.actions.length} action(s) · ${e.roundTripMs}ms`);
