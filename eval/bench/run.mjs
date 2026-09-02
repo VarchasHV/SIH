@@ -18,6 +18,7 @@
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { benchEnv } from "./lib/env.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CORPUS = join(HERE, "corpus.jsonl");
@@ -43,6 +44,31 @@ const ALIAS = {
 const norm = (c) => ALIAS[String(c || "").trim().toLowerCase()] || String(c || "").trim().toLowerCase();
 
 const CATS = ["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card", "phone-in", "ssn", "ipv4", "dob", "email"];
+
+// Structured identifiers: a checksum or an authoritative prefix list makes the
+// VALUE itself verifiable (brief's category C).
+const STRUCTURED = new Set(["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card"]);
+
+// Phase 4 — report classes separately so unlabelled-recall (B) is never
+// averaged into contextual-recall (A).
+//   A  explicit/contextual positive   pos:<cat>:kw
+//   B  unlabelled positive            pos:<cat>:bare
+//   C  structured-identifier positive (cat in STRUCTURED, any context)
+//   D  adversarial negative           neg:<cat>  (same-shape non-PII)
+//   clean   clean negative            neg:clean
+//   ocr     OCR-garbled positive      pos:<cat>:ocr
+//   composite / regression            multi-PII sentences / aadhaar-substring
+function classOf(kind, spans) {
+  if (kind.includes("regression")) return "regression";
+  if (kind.includes("composite")) return "composite";
+  if (kind.endsWith(":ocr")) return "ocr";
+  if (kind === "neg:clean") return "clean";
+  if (kind.startsWith("neg:")) return "D-adversarial-neg";
+  if (kind.endsWith(":bare")) return "B-unlabelled";
+  if (kind.startsWith("pos:")) return "A-contextual";
+  return "other";
+}
+const CLASS_ORDER = ["A-contextual", "B-unlabelled", "C-structured", "D-adversarial-neg", "clean", "ocr", "composite", "regression"];
 
 function iou(a, b) {
   const lo = Math.max(a.start, b.start), hi = Math.min(a.end, b.end);
@@ -101,10 +127,16 @@ async function loadDetectors(filter) {
 }
 
 async function main() {
-  const filter = process.argv.slice(2);
+  const rawArgs = process.argv.slice(2);
+  // --corpus <path> selects an alternate corpus (e.g. a 100k generated one).
+  let corpusPath = CORPUS;
+  const ci = rawArgs.indexOf("--corpus");
+  if (ci > -1) { corpusPath = rawArgs[ci + 1]; rawArgs.splice(ci, 2); }
+  const filter = rawArgs;
   const limit = Number(process.env.LIMIT || 0);
-  let samples = readFileSync(CORPUS, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+  let samples = readFileSync(corpusPath, "utf8").trim().split("\n").map((l) => JSON.parse(l));
   if (limit) samples = samples.slice(0, limit);
+  console.error(`corpus file: ${corpusPath}`);
 
   console.error(`corpus: ${samples.length} samples, ${samples.reduce((n, s) => n + s.spans.length, 0)} gold spans`);
   console.error("loading detectors...");
@@ -123,6 +155,14 @@ async function main() {
   for (const d of dets) {
     const agg = {};
     const ctxRecall = {}; // tag -> {tp, fn}
+    const formRecall = {}; // Phase 6: surface form -> {tp, fn}
+    // Phase 4 class buckets. positives: {tp,fn,fp} span-level.
+    // negatives: {lineFP, n, spanFP} — did the detector flag anything?
+    const byClass = {};
+    const bump = (cls, patch) => {
+      byClass[cls] ??= { tp: 0, fn: 0, fp: 0, lineFP: 0, spanFP: 0, n: 0 };
+      for (const k in patch) byClass[cls][k] += patch[k];
+    };
     let lineTP = 0, lineFP = 0, lineFN = 0, lineTN = 0;
     const t0 = performance.now();
     for (const s of samples) {
@@ -130,15 +170,31 @@ async function main() {
       try { preds = (await d.detect(s.text)) || []; } catch { preds = []; }
       const per = scoreSample(s.spans, preds);
       const tag = ctxTag(s.kind);
+      const cls = classOf(s.kind, s.spans);
+      const isPos = s.spans.length > 0;
+      let sTp = 0, sFn = 0, sFp = 0;
       for (const [cat, v] of Object.entries(per)) {
         agg[cat] ??= { tp: 0, fp: 0, fn: 0 };
         agg[cat].tp += v.tp; agg[cat].fp += v.fp; agg[cat].fn += v.fn;
-        if (s.spans.length) {
+        sTp += v.tp; sFn += v.fn; sFp += v.fp;
+        if (isPos) {
           ctxRecall[tag] ??= { tp: 0, fn: 0 };
           ctxRecall[tag].tp += v.tp; ctxRecall[tag].fn += v.fn;
+          const form = s.form || "ascii";
+          formRecall[form] ??= { tp: 0, fn: 0 };
+          formRecall[form].tp += v.tp; formRecall[form].fn += v.fn;
         }
       }
-      const goldHas = s.spans.length > 0;
+      if (isPos) {
+        bump(cls, { tp: sTp, fn: sFn, fp: sFp, n: 1 });
+        // C-structured is a category slice that overlaps A/B
+        if (s.spans.every((sp) => STRUCTURED.has(sp.category))) {
+          bump("C-structured", { tp: sTp, fn: sFn, fp: sFp, n: 1 });
+        }
+      } else {
+        bump(cls, { lineFP: preds.length ? 1 : 0, spanFP: preds.length, n: 1 });
+      }
+      const goldHas = isPos;
       const predHas = preds.length > 0;
       if (goldHas && predHas) lineTP++;
       else if (goldHas && !predHas) lineFN++;
@@ -148,20 +204,45 @@ async function main() {
     const ms = performance.now() - t0;
     const overall = PRF(Object.values(agg).reduce((a, v) => ({ tp: a.tp + v.tp, fp: a.fp + v.fp, fn: a.fn + v.fn }), { tp: 0, fp: 0, fn: 0 }));
     const linePRF = PRF({ tp: lineTP, fp: lineFP, fn: lineFN });
+    const classReport = {};
+    for (const cls of [...CLASS_ORDER, ...Object.keys(byClass)].filter((c, i, a) => a.indexOf(c) === i)) {
+      const b = byClass[cls];
+      if (!b) continue;
+      classReport[cls] = b.tp + b.fn > 0
+        ? { kind: "positive", n: b.n, recall: b.tp / (b.tp + b.fn || 1), spanFP: b.fp, gold: b.tp + b.fn }
+        : { kind: "negative", n: b.n, falsePositiveRate: b.lineFP / (b.n || 1), lineFP: b.lineFP, spanFP: b.spanFP };
+    }
     results.push({
       id: d.id, name: d.name, meta: d.meta,
       perCategory: Object.fromEntries(CATS.map((c) => [c, agg[c] ? PRF(agg[c]) : null])),
       overall,
       recallByContext: Object.fromEntries(Object.entries(ctxRecall).map(([k, v]) => [k, { recall: v.tp / (v.tp + v.fn || 1), n: v.tp + v.fn }])),
+      recallBySurfaceForm: Object.fromEntries(Object.entries(formRecall).map(([k, v]) => [k, { recall: v.tp / (v.tp + v.fn || 1), n: v.tp + v.fn }])),
+      byClass: classReport,
       line: { ...linePRF, tn: lineTN, accuracy: (lineTP + lineTN) / samples.length },
       latency: { totalMs: Math.round(ms), msPerSample: +(ms / samples.length).toFixed(2) },
     });
     console.error(`  ${d.name}: F1 ${(overall.f1 * 100).toFixed(1)}%  (${Math.round(ms)}ms)`);
   }
 
-  writeFileSync(join(HERE, "results.json"), JSON.stringify({ generatedAt: new Date().toISOString(), corpusSize: samples.length, results }, null, 2));
-  writeFileSync(join(HERE, "results.md"), renderMarkdown(samples, results));
-  console.error(`\nwrote eval/bench/results.json and results.md`);
+  // Committed corpus -> results.json/.md (tracked). Alternate --corpus -> write
+  // next to that corpus so the committed baseline is never clobbered.
+  const isDefault = corpusPath === CORPUS;
+  const outJson = isDefault ? join(HERE, "results.json") : corpusPath.replace(/\.jsonl$/, "") + ".results.json";
+  const outMd = isDefault ? join(HERE, "results.md") : corpusPath.replace(/\.jsonl$/, "") + ".results.md";
+  let manifest = null;
+  try { manifest = JSON.parse(readFileSync(corpusPath.replace(/\.jsonl$/, "") + ".manifest.json", "utf8")); } catch {}
+  writeFileSync(outJson, JSON.stringify({
+    benchmark: "pii-detection",
+    benchmarkVersion: 2,
+    environment: benchEnv(),
+    corpusFile: corpusPath,
+    corpusSize: samples.length,
+    corpusManifest: manifest,
+    results,
+  }, null, 2));
+  writeFileSync(outMd, renderMarkdown(samples, results));
+  console.error(`\nwrote ${outJson} and ${outMd}`);
 }
 
 function renderMarkdown(samples, results) {
@@ -172,11 +253,38 @@ function renderMarkdown(samples, results) {
   md += `**Generated**: ${new Date().toISOString().slice(0, 10)} · seeded, reproducible via \`node eval/bench/gen-corpus.mjs\`\n\n`;
   md += `Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro-averaged.\n\n`;
 
-  md += `## Overall (span-level)\n\n`;
+  md += `## Overall (span-level, all positives blended)\n\n`;
+  md += `> This single number mixes contextual and unlabelled positives. See the class breakdown below — a context-gated detector deliberately trades unlabelled-recall (B) for precision, and that trade must not be hidden here.\n\n`;
   md += `| Detector | Kind | Precision | Recall | F1 | Line acc. | ms/sample |\n|---|---|--:|--:|--:|--:|--:|\n`;
   for (const r of [...results].sort((a, b) => b.overall.f1 - a.overall.f1)) {
     md += `| ${r.name} | ${r.meta.kind || "—"} | ${pct(r.overall.precision)} | ${pct(r.overall.recall)} | **${pct(r.overall.f1)}** | ${pct(r.line.accuracy)} | ${r.latency.msPerSample} |\n`;
   }
+
+  md += `\n## Phase 4 — results by class (A/B/C/D reported separately)\n\n`;
+  md += `| Class | Metric | ${results.map((r) => r.name).join(" | ")} |\n|---|---|${results.map(() => "--:").join("|")}|\n`;
+  const CLASS_LABEL = {
+    "A-contextual": "A · contextual positive (keyworded)",
+    "B-unlabelled": "B · unlabelled positive (no keyword)",
+    "C-structured": "C · structured-identifier positive",
+    "D-adversarial-neg": "D · adversarial negative (same shape, not PII)",
+    "clean": "clean negative (safe prose)",
+    "ocr": "OCR-garbled positive",
+    "composite": "multi-PII sentence",
+    "regression": "aadhaar-substring regression",
+  };
+  for (const cls of ["A-contextual", "B-unlabelled", "C-structured", "D-adversarial-neg", "clean", "ocr", "composite", "regression"]) {
+    const any = results.some((r) => r.byClass[cls]);
+    if (!any) continue;
+    const metric = results.find((r) => r.byClass[cls])?.byClass[cls].kind === "positive" ? "recall" : "false-positive rate";
+    md += `| ${CLASS_LABEL[cls] || cls} | ${metric} | ` + results.map((r) => {
+      const b = r.byClass[cls];
+      if (!b) return "—";
+      return b.kind === "positive"
+        ? `${pct(b.recall)} (n=${b.gold})`
+        : `${pct(b.falsePositiveRate)} (${b.lineFP}/${b.n})`;
+    }).join(" | ") + ` |\n`;
+  }
+  md += `\n**A vs B is the whole story of a context-gated detector.** B (unlabelled) recall being lower than A (contextual) is by design — bare shape-only IDs are dropped to keep precision high on class D.\n`;
 
   md += `\n## Per-category F1\n\n`;
   md += `| Category | ${results.map((r) => r.name).join(" | ")} |\n|---|${results.map(() => "--:").join("|")}|\n`;
@@ -217,6 +325,24 @@ function renderMarkdown(samples, results) {
       return v ? `${pct(v.recall)} (n=${v.n})` : "—";
     }).join(" | ") + ` |\n`;
   }
+
+  md += `\n## Phase 6 — recall by surface form (Unicode / OCR robustness)\n\n`;
+  md += `Preprocessing is a real, separate pipeline stage — it must not be silently credited to "the detector". \`current\` runs \`pii-rules.mjs normalize()\` (folds Arabic / Persian / Devanagari / fullwidth digits, NBSP, Unicode dashes, strips zero-width) **before** matching; \`naive regex\` does not. The gap between the two columns on the non-ASCII rows below IS the normalization contribution, shown explicitly.\n\n`;
+  const FORM_ORDER = ["ascii", "arab", "pers", "deva", "fullwidth", "nbsp", "endash", "zwsp", "ocr"];
+  const FORM_LABEL = {
+    ascii: "ASCII (plain / space / hyphen / dot)", arab: "Arabic-Indic digits", pers: "Persian digits",
+    deva: "Devanagari digits", fullwidth: "fullwidth digits", nbsp: "non-breaking space sep",
+    endash: "en-dash sep", zwsp: "zero-width space between digits", ocr: "OCR char-confusion (O↔0, l↔1, S↔5…)",
+  };
+  md += `| Surface form | ${results.map((r) => r.name).join(" | ")} |\n|---|${results.map(() => "--:").join("|")}|\n`;
+  for (const f of FORM_ORDER) {
+    if (!results.some((r) => r.recallBySurfaceForm[f])) continue;
+    md += `| ${FORM_LABEL[f] || f} | ` + results.map((r) => {
+      const v = r.recallBySurfaceForm[f];
+      return v ? `${pct(v.recall)} (n=${v.n})` : "—";
+    }).join(" | ") + ` |\n`;
+  }
+  md += `\nOCR-confusion recall is low for every detector — a corrupted digit breaks the checksum, and \`normalize()\` cannot recover it. That is a genuine limitation of a screenshot-reading pipeline and is reported, not hidden.\n`;
 
   md += `\n## Detectors\n\n`;
   for (const r of results) md += `- **${r.name}** — ${r.meta.notes || ""}\n`;

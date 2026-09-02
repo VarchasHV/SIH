@@ -1,0 +1,401 @@
+{
+  "benchmark": "pii-competitors",
+  "benchmarkVersion": 1,
+  "scoring": "category-set per line (did the tool flag gold category C on a line containing a gold C span)",
+  "environment": {
+    "timestamp": "2026-09-02T15:17:38.952624+00:00",
+    "gitCommit": "78d05d8",
+    "python": "3.12.7",
+    "platform": "macOS-26.6.2-arm64-arm-64bit",
+    "corpus": "/Users/manas/SIH/eval/bench/corpus.jsonl",
+    "samples": 2500
+  },
+  "openSource": {
+    "Privacy Lens (pii-rules.mjs)": {
+      "result": {
+        "overall": {
+          "precision": 0.9894,
+          "recall": 0.8473,
+          "f1": 0.9129,
+          "tp": 1493,
+          "fp": 16,
+          "fn": 269
+        },
+        "perCategory": {
+          "aadhaar": {
+            "precision": 0.9679,
+            "recall": 0.9179,
+            "f1": 0.9423,
+            "tp": 302,
+            "fp": 10,
+            "fn": 27
+          },
+          "pan": {
+            "precision": 1.0,
+            "recall": 0.9634,
+            "f1": 0.9814,
+            "tp": 79,
+            "fp": 0,
+            "fn": 3
+          },
+          "gstin": {
+            "precision": 1.0,
+            "recall": 0.8627,
+            "f1": 0.9263,
+            "tp": 44,
+            "fp": 0,
+            "fn": 7
+          },
+          "ifsc": {
+            "precision": 1.0,
+            "recall": 0.9342,
+            "f1": 0.966,
+            "tp": 71,
+            "fp": 0,
+            "fn": 5
+          },
+          "upi-vpa": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 102,
+            "fp": 0,
+            "fn": 0
+          },
+          "voter-id": {
+            "precision": 1.0,
+            "recall": 0.7568,
+            "f1": 0.8615,
+            "tp": 56,
+            "fp": 0,
+            "fn": 18
+          },
+          "vehicle-reg": {
+            "precision": 0.9792,
+            "recall": 0.8545,
+            "f1": 0.9126,
+            "tp": 47,
+            "fp": 1,
+            "fn": 8
+          },
+          "passport-in": {
+            "precision": 1.0,
+            "recall": 0.7013,
+            "f1": 0.8244,
+            "tp": 54,
+            "fp": 0,
+            "fn": 23
+          },
+          "credit-card": {
+            "precision": 0.9927,
+            "recall": 0.8125,
+            "f1": 0.8936,
+            "tp": 273,
+            "fp": 2,
+            "fn": 63
+          },
+          "phone-in": {
+            "precision": 0.9874,
+            "recall": 0.754,
+            "f1": 0.8551,
+            "tp": 236,
+            "fp": 3,
+            "fn": 77
+          },
+          "ssn": {
+            "precision": 1.0,
+            "recall": 0.6615,
+            "f1": 0.7963,
+            "tp": 43,
+            "fp": 0,
+            "fn": 22
+          },
+          "ipv4": {
+            "precision": 1.0,
+            "recall": 0.8125,
+            "f1": 0.8966,
+            "tp": 39,
+            "fp": 0,
+            "fn": 9
+          },
+          "dob": {
+            "precision": 1.0,
+            "recall": 0.8906,
+            "f1": 0.9421,
+            "tp": 57,
+            "fp": 0,
+            "fn": 7
+          },
+          "email": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 90,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "msPerSample": 0.0231
+    },
+    "Microsoft Presidio": {
+      "result": {
+        "overall": {
+          "precision": 0.4666,
+          "recall": 0.3411,
+          "f1": 0.3941,
+          "tp": 601,
+          "fp": 687,
+          "fn": 1161
+        },
+        "perCategory": {
+          "aadhaar": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 329
+          },
+          "pan": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 82
+          },
+          "gstin": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 51
+          },
+          "ifsc": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 76
+          },
+          "upi-vpa": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 102
+          },
+          "voter-id": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 74
+          },
+          "vehicle-reg": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 55
+          },
+          "passport-in": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 77
+          },
+          "credit-card": {
+            "precision": 0.8167,
+            "recall": 0.1458,
+            "f1": 0.2475,
+            "tp": 49,
+            "fp": 11,
+            "fn": 287
+          },
+          "phone-in": {
+            "precision": 0.7641,
+            "recall": 0.9105,
+            "f1": 0.8309,
+            "tp": 285,
+            "fp": 88,
+            "fn": 28
+          },
+          "ssn": {
+            "precision": 0.5652,
+            "recall": 1.0,
+            "f1": 0.7222,
+            "tp": 65,
+            "fp": 50,
+            "fn": 0
+          },
+          "ipv4": {
+            "precision": 0.6957,
+            "recall": 1.0,
+            "f1": 0.8205,
+            "tp": 48,
+            "fp": 21,
+            "fn": 0
+          },
+          "dob": {
+            "precision": 0.1102,
+            "recall": 1.0,
+            "f1": 0.1984,
+            "tp": 64,
+            "fp": 517,
+            "fn": 0
+          },
+          "email": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 90,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "msPerSample": 2.5059
+    },
+    "spaCy NER (en_core_web_sm)": {
+      "result": {
+        "overall": {
+          "precision": 0.1539,
+          "recall": 0.0721,
+          "f1": 0.0982,
+          "tp": 127,
+          "fp": 698,
+          "fn": 1635
+        },
+        "perCategory": {
+          "aadhaar": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 329
+          },
+          "pan": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 82
+          },
+          "gstin": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 51
+          },
+          "ifsc": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 76
+          },
+          "upi-vpa": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 102
+          },
+          "voter-id": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 74
+          },
+          "vehicle-reg": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 55
+          },
+          "passport-in": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 77
+          },
+          "credit-card": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 336
+          },
+          "phone-in": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 313
+          },
+          "ssn": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 65
+          },
+          "ipv4": {
+            "precision": 1.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 48
+          },
+          "dob": {
+            "precision": 0.0503,
+            "recall": 0.5781,
+            "f1": 0.0926,
+            "tp": 37,
+            "fp": 698,
+            "fn": 27
+          },
+          "email": {
+            "precision": 1.0,
+            "recall": 1.0,
+            "f1": 1.0,
+            "tp": 90,
+            "fp": 0,
+            "fn": 0
+          }
+        }
+      },
+      "msPerSample": 1.9008
+    }
+  },
+  "commercial": {
+    "AWS Comprehend (PII)": "NOT_EXECUTED \u2014 no AWS credentials in this environment",
+    "Google Cloud DLP": "NOT_EXECUTED \u2014 no GCP credentials in this environment",
+    "Azure AI Language (PII)": "NOT_EXECUTED \u2014 no Azure credentials in this environment"
+  }
+}

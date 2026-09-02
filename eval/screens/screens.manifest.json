@@ -1,0 +1,30 @@
+{
+  "seed": 20260902,
+  "generatedAt": "2026-09-02T15:30:02.175Z",
+  "gitCommit": "78d05d8",
+  "nodeVersion": "v24.16.0",
+  "screens": 11,
+  "screenTypes": [
+    "login",
+    "banking",
+    "checkout",
+    "government-form",
+    "invoice",
+    "profile",
+    "dashboard"
+  ],
+  "elements": 101,
+  "piiElements": 38,
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "viewports": [
+    "1280x800",
+    "1280x900",
+    "1024x768",
+    "375x812"
+  ],
+  "boxErrors": 0,
+  "disclaimer": "Layout specs only. No real browser render, no real OCR in this environment. score.mjs measures fusion + redaction geometry, not OCR or rendering."
+}

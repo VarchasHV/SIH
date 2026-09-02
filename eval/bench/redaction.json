@@ -1,0 +1,101 @@
+{
+  "meta": {
+    "benchmark": "redaction",
+    "benchmarkVersion": 1,
+    "pad": 0,
+    "corpusFile": "/Users/manas/SIH/eval/bench/corpus.jsonl",
+    "environment": {
+      "timestamp": "2026-09-02T15:30:02.510Z",
+      "gitCommit": "78d05d8",
+      "gitBranch": "working",
+      "gitDirty": true,
+      "nodeVersion": "v24.16.0",
+      "v8": "13.6.233.17-node.49",
+      "os": "Darwin 25.6.0",
+      "platform": "darwin",
+      "arch": "arm64",
+      "cpuModel": "Apple M3",
+      "cpuCount": 8,
+      "totalMemGB": 17.2
+    }
+  },
+  "rows": [
+    {
+      "id": "current",
+      "name": "current (regex+checksum)",
+      "goldChars": 83625,
+      "goldSpans": 6037,
+      "leakageRate": 0.1472526158445441,
+      "fullyRedactedRate": 0.8235878747722378,
+      "partialLeakRate": 0.17641212522776215,
+      "overRedactionRate": 0.0032428050263477908,
+      "charIoU": 0.8503881607975482,
+      "maskedChars": 71543,
+      "leakageByClass": {
+        "A-contextual": {
+          "leakageRate": 0.060432624971901855,
+          "goldChars": 57833
+        },
+        "other": {
+          "leakageRate": 0,
+          "goldChars": 0
+        },
+        "ocr-garbled": {
+          "leakageRate": 0.8535969709718132,
+          "goldChars": 7131
+        },
+        "B-unlabelled": {
+          "leakageRate": 0.3681606107733635,
+          "goldChars": 7073
+        },
+        "regression": {
+          "leakageRate": 0.016666666666666666,
+          "goldChars": 1140
+        },
+        "composite": {
+          "leakageRate": 0.010432618683001531,
+          "goldChars": 10448
+        }
+      },
+      "leakageBySurfaceForm": {
+        "zwsp": {
+          "leakageRate": 0.08122540753232153,
+          "goldChars": 7116
+        },
+        "ascii": {
+          "leakageRate": 0.0787564257077502,
+          "goldChars": 40657
+        },
+        "deva": {
+          "leakageRate": 0.09058380414312618,
+          "goldChars": 5310
+        },
+        "nbsp": {
+          "leakageRate": 0.09952874646559849,
+          "goldChars": 5305
+        },
+        "ocr": {
+          "leakageRate": 0.8535969709718132,
+          "goldChars": 7131
+        },
+        "endash": {
+          "leakageRate": 0.0701254275940707,
+          "goldChars": 5262
+        },
+        "fullwidth": {
+          "leakageRate": 0.08750290900628345,
+          "goldChars": 4297
+        },
+        "pers": {
+          "leakageRate": 0.07561260210035006,
+          "goldChars": 4285
+        },
+        "arab": {
+          "leakageRate": 0.08657907085875176,
+          "goldChars": 4262
+        }
+      },
+      "msPerSample": 0.005
+    }
+  ]
+}

@@ -1,174 +1,135 @@
 {
-  "generatedAt": "2026-08-30T12:42:07.608Z",
-  "corpusSize": 6100,
-  "results": [
-    {
-      "id": "baseline-old",
-      "name": "baseline (pre-fix)",
-      "meta": {
-        "name": "baseline (pre-fix)",
-        "kind": "on-device / rules",
-        "notes": "pii-rules.mjs @ 7dafeaa — 14 flat regexes, Verhoeff+Luhn only, no normalization, no context gating."
-      },
-      "perCategory": {
-        "aadhaar": {
-          "tp": 134,
-          "fp": 17,
-          "fn": 188,
-          "precision": 0.8874172185430463,
-          "recall": 0.4161490683229814,
-          "f1": 0.5665961945031712
-        },
-        "pan": {
-          "tp": 249,
-          "fp": 160,
-          "fn": 20,
-          "precision": 0.60880195599022,
-          "recall": 0.9256505576208178,
-          "f1": 0.7345132743362831
-        },
-        "gstin": {
-          "tp": 178,
-          "fp": 160,
-          "fn": 22,
-          "precision": 0.5266272189349113,
-          "recall": 0.89,
-          "f1": 0.6617100371747212
-        },
-        "ifsc": {
-          "tp": 232,
-          "fp": 160,
-          "fn": 20,
-          "precision": 0.5918367346938775,
-          "recall": 0.9206349206349206,
-          "f1": 0.7204968944099379
-        },
-        "upi-vpa": {
-          "tp": 95,
-          "fp": 0,
-          "fn": 214,
-          "precision": 1,
-          "recall": 0.3074433656957929,
-          "f1": 0.4702970297029703
-        },
-        "voter-id": {
-          "tp": 166,
-          "fp": 160,
-          "fn": 34,
-          "precision": 0.50920245398773,
-          "recall": 0.83,
-          "f1": 0.6311787072243346
-        },
-        "vehicle-reg": {
-          "tp": 177,
-          "fp": 160,
-          "fn": 23,
-          "precision": 0.5252225519287834,
-          "recall": 0.885,
-          "f1": 0.659217877094972
-        },
-        "passport-in": {
-          "tp": 225,
-          "fp": 118,
-          "fn": 28,
-          "precision": 0.6559766763848397,
-          "recall": 0.8893280632411067,
-          "f1": 0.7550335570469798
-        },
-        "credit-card": {
-          "tp": 176,
-          "fp": 117,
-          "fn": 141,
-          "precision": 0.6006825938566553,
-          "recall": 0.555205047318612,
-          "f1": 0.5770491803278689
-        },
-        "phone-in": {
-          "tp": 154,
-          "fp": 211,
-          "fn": 184,
-          "precision": 0.42191780821917807,
-          "recall": 0.4556213017751479,
-          "f1": 0.43812233285917496
-        },
-        "ssn": {
-          "tp": 200,
-          "fp": 160,
-          "fn": 0,
-          "precision": 0.5555555555555556,
-          "recall": 1,
-          "f1": 0.7142857142857143
-        },
-        "ipv4": {
-          "tp": 200,
-          "fp": 104,
-          "fn": 0,
-          "precision": 0.6578947368421053,
-          "recall": 1,
-          "f1": 0.7936507936507937
-        },
-        "dob": {
-          "tp": 269,
-          "fp": 51,
-          "fn": 0,
-          "precision": 0.840625,
-          "recall": 1,
-          "f1": 0.9134125636672326
-        },
-        "email": {
-          "tp": 326,
-          "fp": 0,
-          "fn": 0,
-          "precision": 1,
-          "recall": 1,
-          "f1": 1
-        }
-      },
-      "overall": {
-        "tp": 2781,
-        "fp": 1578,
-        "fn": 874,
-        "precision": 0.6379903647625602,
-        "recall": 0.7608755129958961,
-        "f1": 0.6940354379835288
-      },
-      "recallByContext": {
-        "ocr-garbled": {
-          "recall": 0.21808510638297873,
-          "n": 188
-        },
-        "keyworded": {
-          "recall": 0.7749132374814081,
-          "n": 2017
-        },
-        "composite": {
-          "recall": 0.8352201257861636,
-          "n": 795
-        },
-        "bare (no keyword)": {
-          "recall": 0.761344537815126,
-          "n": 595
-        },
-        "aadhaar-substring-regression": {
-          "recall": 1,
-          "n": 60
-        }
-      },
-      "line": {
-        "tp": 2440,
-        "fp": 1540,
-        "fn": 720,
-        "precision": 0.6130653266331658,
-        "recall": 0.7721518987341772,
-        "f1": 0.6834733893557424,
-        "tn": 1400,
-        "accuracy": 0.6295081967213115
-      },
-      "latency": {
-        "totalMs": 12,
-        "msPerSample": 0
-      }
+  "benchmark": "pii-detection",
+  "benchmarkVersion": 2,
+  "environment": {
+    "timestamp": "2026-09-02T15:30:02.392Z",
+    "gitCommit": "78d05d8",
+    "gitBranch": "working",
+    "gitDirty": true,
+    "nodeVersion": "v24.16.0",
+    "v8": "13.6.233.17-node.49",
+    "os": "Darwin 25.6.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M3",
+    "cpuCount": 8,
+    "totalMemGB": 17.2
+  },
+  "corpusFile": "/Users/manas/SIH/eval/bench/corpus.jsonl",
+  "corpusSize": 8500,
+  "corpusManifest": {
+    "corpusVersion": 2,
+    "generator": "eval/bench/gen-corpus.mjs",
+    "seed": 20260902,
+    "params": {
+      "nPerCategory": 200,
+      "nClean": 700,
+      "nComposite": 300,
+      "total": null
     },
+    "generatedAt": "2026-09-02T15:30:02.259Z",
+    "gitCommit": "78d05d8",
+    "nodeVersion": "v24.16.0",
+    "samples": 8500,
+    "positiveLines": 5560,
+    "negativeLines": 2940,
+    "goldSpans": 6037,
+    "spanOffsetErrors": 0,
+    "goldSpansByCategory": {
+      "aadhaar": 1115,
+      "phone-in": 1115,
+      "ssn": 200,
+      "passport-in": 253,
+      "credit-card": 1122,
+      "ifsc": 270,
+      "pan": 262,
+      "vehicle-reg": 200,
+      "email": 315,
+      "gstin": 200,
+      "ipv4": 200,
+      "upi-vpa": 332,
+      "dob": 253,
+      "voter-id": 200
+    },
+    "samplesByKind": {
+      "pos:aadhaar:kw": 839,
+      "neg:ifsc": 160,
+      "pos:phone-in:kw": 850,
+      "neg:gstin": 160,
+      "neg:clean": 700,
+      "pos:ssn:kw": 144,
+      "neg:ssn": 160,
+      "pos:passport-in:kw": 131,
+      "pos:credit-card:kw": 835,
+      "neg:phone-in": 160,
+      "pos:ifsc:ocr": 27,
+      "pos:credit-card:ocr": 117,
+      "neg:pan": 160,
+      "pos:pan:kw": 138,
+      "pos:vehicle-reg:bare": 36,
+      "neg:passport-in": 160,
+      "pos:email:kw": 148,
+      "neg:vehicle-reg": 160,
+      "pos:gstin:kw": 130,
+      "pos:aadhaar:bare": 32,
+      "pos:ipv4:kw": 154,
+      "pos:credit-card:verhoeff12-regression": 60,
+      "neg:voter-id": 160,
+      "pos:composite": 300,
+      "pos:ifsc:kw": 138,
+      "pos:aadhaar:ocr": 129,
+      "pos:upi-vpa:kw": 163,
+      "neg:aadhaar": 160,
+      "pos:dob:kw": 153,
+      "pos:passport-in:bare": 44,
+      "pos:voter-id:kw": 143,
+      "pos:ipv4:bare": 46,
+      "pos:pan:bare": 37,
+      "pos:vehicle-reg:ocr": 31,
+      "pos:email:bare": 52,
+      "pos:vehicle-reg:kw": 133,
+      "pos:phone-in:bare": 29,
+      "neg:ipv4": 160,
+      "neg:upi-vpa": 160,
+      "pos:phone-in:ocr": 121,
+      "pos:voter-id:bare": 25,
+      "neg:dob": 160,
+      "pos:ssn:bare": 56,
+      "pos:ifsc:bare": 35,
+      "pos:voter-id:ocr": 32,
+      "pos:upi-vpa:bare": 37,
+      "neg:credit-card": 160,
+      "pos:credit-card:bare": 48,
+      "pos:passport-in:ocr": 25,
+      "pos:pan:ocr": 25,
+      "neg:email": 160,
+      "pos:gstin:bare": 35,
+      "pos:gstin:ocr": 35,
+      "pos:dob:bare": 47
+    },
+    "samplesBySurfaceForm": {
+      "zwsp": 300,
+      "deva": 375,
+      "nbsp": 370,
+      "ascii": 2406,
+      "ocr": 542,
+      "endash": 367,
+      "fullwidth": 300,
+      "pers": 300,
+      "arab": 300
+    },
+    "samplesByContext": {
+      "kw": 4099,
+      "negative": 2940,
+      "ocr": 542,
+      "bare": 559,
+      "verhoeff12-regression": 60,
+      "composite": 300
+    },
+    "aadhaarSubstringRegressionCards": 60,
+    "out": "/Users/manas/SIH/eval/bench/corpus.jsonl"
+  },
+  "results": [
     {
       "id": "current",
       "name": "current (regex+checksum)",
@@ -179,39 +140,39 @@
       },
       "perCategory": {
         "aadhaar": {
-          "tp": 309,
-          "fp": 21,
-          "fn": 13,
-          "precision": 0.9363636363636364,
-          "recall": 0.9596273291925466,
-          "f1": 0.9478527607361964
+          "tp": 1000,
+          "fp": 30,
+          "fn": 115,
+          "precision": 0.970873786407767,
+          "recall": 0.8968609865470852,
+          "f1": 0.9324009324009325
         },
         "pan": {
-          "tp": 249,
+          "tp": 248,
           "fp": 0,
-          "fn": 20,
+          "fn": 14,
           "precision": 1,
-          "recall": 0.9256505576208178,
-          "f1": 0.9613899613899614
+          "recall": 0.9465648854961832,
+          "f1": 0.9725490196078431
         },
         "gstin": {
-          "tp": 178,
+          "tp": 173,
           "fp": 0,
-          "fn": 22,
+          "fn": 27,
           "precision": 1,
-          "recall": 0.89,
-          "f1": 0.9417989417989417
+          "recall": 0.865,
+          "f1": 0.9276139410187667
         },
         "ifsc": {
-          "tp": 232,
+          "tp": 258,
           "fp": 0,
-          "fn": 20,
+          "fn": 12,
           "precision": 1,
-          "recall": 0.9206349206349206,
-          "f1": 0.9586776859504132
+          "recall": 0.9555555555555556,
+          "f1": 0.9772727272727273
         },
         "upi-vpa": {
-          "tp": 309,
+          "tp": 332,
           "fp": 0,
           "fn": 0,
           "precision": 1,
@@ -219,238 +180,71 @@
           "f1": 1
         },
         "voter-id": {
-          "tp": 128,
+          "tp": 148,
           "fp": 0,
-          "fn": 72,
+          "fn": 52,
           "precision": 1,
-          "recall": 0.64,
-          "f1": 0.7804878048780487
+          "recall": 0.74,
+          "f1": 0.8505747126436781
         },
         "vehicle-reg": {
-          "tp": 177,
-          "fp": 6,
-          "fn": 23,
-          "precision": 0.9672131147540983,
-          "recall": 0.885,
-          "f1": 0.9242819843342036
-        },
-        "passport-in": {
-          "tp": 186,
-          "fp": 0,
-          "fn": 67,
-          "precision": 1,
-          "recall": 0.7351778656126482,
-          "f1": 0.847380410022779
-        },
-        "credit-card": {
-          "tp": 278,
+          "tp": 173,
           "fp": 2,
-          "fn": 39,
-          "precision": 0.9928571428571429,
-          "recall": 0.8769716088328076,
-          "f1": 0.9313232830820771
-        },
-        "phone-in": {
-          "tp": 280,
-          "fp": 1,
-          "fn": 58,
-          "precision": 0.99644128113879,
-          "recall": 0.8284023668639053,
-          "f1": 0.9046849757673667
-        },
-        "ssn": {
-          "tp": 145,
-          "fp": 0,
-          "fn": 55,
-          "precision": 1,
-          "recall": 0.725,
-          "f1": 0.8405797101449275
-        },
-        "ipv4": {
-          "tp": 155,
-          "fp": 0,
-          "fn": 45,
-          "precision": 1,
-          "recall": 0.775,
-          "f1": 0.8732394366197184
-        },
-        "dob": {
-          "tp": 229,
-          "fp": 0,
-          "fn": 40,
-          "precision": 1,
-          "recall": 0.8513011152416357,
-          "f1": 0.9196787148594378
-        },
-        "email": {
-          "tp": 326,
-          "fp": 0,
-          "fn": 0,
-          "precision": 1,
-          "recall": 1,
-          "f1": 1
-        }
-      },
-      "overall": {
-        "tp": 3181,
-        "fp": 30,
-        "fn": 474,
-        "precision": 0.9906571161631891,
-        "recall": 0.8703146374829002,
-        "f1": 0.9265948150305855
-      },
-      "recallByContext": {
-        "ocr-garbled": {
-          "recall": 0.18085106382978725,
-          "n": 188
-        },
-        "keyworded": {
-          "recall": 0.9712444224095191,
-          "n": 2017
-        },
-        "composite": {
-          "recall": 0.9849056603773585,
-          "n": 795
-        },
-        "bare (no keyword)": {
-          "recall": 0.5831932773109244,
-          "n": 595
-        },
-        "aadhaar-substring-regression": {
-          "recall": 0.9666666666666667,
-          "n": 60
-        }
-      },
-      "line": {
-        "tp": 2701,
-        "fp": 18,
-        "fn": 459,
-        "precision": 0.9933799190878999,
-        "recall": 0.854746835443038,
-        "f1": 0.9188637523388331,
-        "tn": 2922,
-        "accuracy": 0.9218032786885246
-      },
-      "latency": {
-        "totalMs": 29,
-        "msPerSample": 0
-      }
-    },
-    {
-      "id": "naive-regex",
-      "name": "naive regex (no checksum)",
-      "meta": {
-        "name": "naive regex (no checksum)",
-        "kind": "on-device / rules",
-        "notes": "Loose patterns, no Verhoeff/Luhn, no digit-boundary anchoring."
-      },
-      "perCategory": {
-        "aadhaar": {
-          "tp": 220,
-          "fp": 389,
-          "fn": 102,
-          "precision": 0.361247947454844,
-          "recall": 0.6832298136645962,
-          "f1": 0.47261009667024706
-        },
-        "pan": {
-          "tp": 249,
-          "fp": 160,
-          "fn": 20,
-          "precision": 0.60880195599022,
-          "recall": 0.9256505576208178,
-          "f1": 0.7345132743362831
-        },
-        "gstin": {
-          "tp": 177,
-          "fp": 160,
-          "fn": 23,
-          "precision": 0.5252225519287834,
-          "recall": 0.885,
-          "f1": 0.659217877094972
-        },
-        "ifsc": {
-          "tp": 232,
-          "fp": 160,
-          "fn": 20,
-          "precision": 0.5918367346938775,
-          "recall": 0.9206349206349206,
-          "f1": 0.7204968944099379
-        },
-        "upi-vpa": {
-          "tp": 309,
-          "fp": 545,
-          "fn": 0,
-          "precision": 0.3618266978922717,
-          "recall": 1,
-          "f1": 0.531384350816853
-        },
-        "voter-id": {
-          "tp": 166,
-          "fp": 160,
-          "fn": 34,
-          "precision": 0.50920245398773,
-          "recall": 0.83,
-          "f1": 0.6311787072243346
-        },
-        "vehicle-reg": {
-          "tp": 0,
-          "fp": 0,
-          "fn": 200,
-          "precision": 0,
-          "recall": 0,
-          "f1": 0
+          "fn": 27,
+          "precision": 0.9885714285714285,
+          "recall": 0.865,
+          "f1": 0.9226666666666666
         },
         "passport-in": {
-          "tp": 225,
-          "fp": 160,
-          "fn": 28,
-          "precision": 0.5844155844155844,
-          "recall": 0.8893280632411067,
-          "f1": 0.7053291536050156
+          "tp": 187,
+          "fp": 0,
+          "fn": 66,
+          "precision": 1,
+          "recall": 0.7391304347826086,
+          "f1": 0.85
         },
         "credit-card": {
-          "tp": 162,
-          "fp": 438,
-          "fn": 155,
-          "precision": 0.27,
-          "recall": 0.5110410094637224,
-          "f1": 0.3533260632497274
+          "tp": 919,
+          "fp": 2,
+          "fn": 203,
+          "precision": 0.997828447339848,
+          "recall": 0.8190730837789661,
+          "f1": 0.899657366617719
         },
         "phone-in": {
-          "tp": 151,
-          "fp": 99,
-          "fn": 187,
-          "precision": 0.604,
-          "recall": 0.4467455621301775,
-          "f1": 0.5136054421768708
+          "tp": 819,
+          "fp": 7,
+          "fn": 296,
+          "precision": 0.9915254237288136,
+          "recall": 0.7345291479820628,
+          "f1": 0.8438948995363215
         },
         "ssn": {
-          "tp": 200,
-          "fp": 160,
-          "fn": 0,
-          "precision": 0.5555555555555556,
-          "recall": 1,
-          "f1": 0.7142857142857143
+          "tp": 144,
+          "fp": 0,
+          "fn": 56,
+          "precision": 1,
+          "recall": 0.72,
+          "f1": 0.8372093023255813
         },
         "ipv4": {
-          "tp": 200,
-          "fp": 104,
-          "fn": 0,
-          "precision": 0.6578947368421053,
-          "recall": 1,
-          "f1": 0.7936507936507937
+          "tp": 154,
+          "fp": 0,
+          "fn": 46,
+          "precision": 1,
+          "recall": 0.77,
+          "f1": 0.8700564971751412
         },
         "dob": {
-          "tp": 269,
-          "fp": 194,
-          "fn": 0,
-          "precision": 0.5809935205183585,
-          "recall": 1,
-          "f1": 0.7349726775956283
+          "tp": 206,
+          "fp": 0,
+          "fn": 47,
+          "precision": 1,
+          "recall": 0.8142292490118577,
+          "f1": 0.8976034858387799
         },
         "email": {
-          "tp": 326,
+          "tp": 315,
           "fp": 0,
           "fn": 0,
           "precision": 1,
@@ -459,47 +253,143 @@
         }
       },
       "overall": {
-        "tp": 2886,
-        "fp": 2729,
-        "fn": 769,
-        "precision": 0.513980409617097,
-        "recall": 0.7896032831737346,
-        "f1": 0.6226537216828479
+        "tp": 5076,
+        "fp": 41,
+        "fn": 961,
+        "precision": 0.9919874926714872,
+        "recall": 0.8408149743249959,
+        "f1": 0.9101667563206024
       },
       "recallByContext": {
-        "ocr-garbled": {
-          "recall": 0.18085106382978725,
-          "n": 188
-        },
         "keyworded": {
-          "recall": 0.7654933068914229,
-          "n": 2017
+          "recall": 0.9380336667479873,
+          "n": 4099
         },
-        "composite": {
-          "recall": 1,
-          "n": 795
+        "ocr-garbled": {
+          "recall": 0.16051660516605165,
+          "n": 542
         },
         "bare (no keyword)": {
-          "recall": 0.761344537815126,
-          "n": 595
+          "recall": 0.5706618962432916,
+          "n": 559
         },
         "aadhaar-substring-regression": {
-          "recall": 1,
+          "recall": 0.9833333333333333,
           "n": 60
+        },
+        "composite": {
+          "recall": 0.9858429858429858,
+          "n": 777
+        }
+      },
+      "recallBySurfaceForm": {
+        "zwsp": {
+          "recall": 0.9133333333333333,
+          "n": 300
+        },
+        "deva": {
+          "recall": 0.896,
+          "n": 375
+        },
+        "nbsp": {
+          "recall": 0.8891891891891892,
+          "n": 370
+        },
+        "ascii": {
+          "recall": 0.9095193213949104,
+          "n": 3183
+        },
+        "ocr": {
+          "recall": 0.16051660516605165,
+          "n": 542
+        },
+        "endash": {
+          "recall": 0.9209809264305178,
+          "n": 367
+        },
+        "fullwidth": {
+          "recall": 0.9066666666666666,
+          "n": 300
+        },
+        "pers": {
+          "recall": 0.9133333333333333,
+          "n": 300
+        },
+        "arab": {
+          "recall": 0.9033333333333333,
+          "n": 300
+        }
+      },
+      "byClass": {
+        "A-contextual": {
+          "kind": "positive",
+          "n": 4099,
+          "recall": 0.9380336667479873,
+          "spanFP": 10,
+          "gold": 4099
+        },
+        "B-unlabelled": {
+          "kind": "positive",
+          "n": 559,
+          "recall": 0.5706618962432916,
+          "spanFP": 0,
+          "gold": 559
+        },
+        "C-structured": {
+          "kind": "positive",
+          "n": 3583,
+          "recall": 0.8615758229897463,
+          "spanFP": 4,
+          "gold": 3706
+        },
+        "D-adversarial-neg": {
+          "kind": "negative",
+          "n": 2240,
+          "falsePositiveRate": 0.008482142857142856,
+          "lineFP": 19,
+          "spanFP": 19
+        },
+        "clean": {
+          "kind": "negative",
+          "n": 700,
+          "falsePositiveRate": 0,
+          "lineFP": 0,
+          "spanFP": 0
+        },
+        "ocr": {
+          "kind": "positive",
+          "n": 542,
+          "recall": 0.16051660516605165,
+          "spanFP": 4,
+          "gold": 542
+        },
+        "composite": {
+          "kind": "positive",
+          "n": 300,
+          "recall": 0.9858429858429858,
+          "spanFP": 8,
+          "gold": 777
+        },
+        "regression": {
+          "kind": "positive",
+          "n": 60,
+          "recall": 0.9833333333333333,
+          "spanFP": 0,
+          "gold": 60
         }
       },
       "line": {
-        "tp": 2402,
-        "fp": 1814,
-        "fn": 758,
-        "precision": 0.5697343453510436,
-        "recall": 0.7601265822784811,
-        "f1": 0.6513015184381779,
-        "tn": 1126,
-        "accuracy": 0.5783606557377049
+        "tp": 4624,
+        "fp": 19,
+        "fn": 936,
+        "precision": 0.9959078182209778,
+        "recall": 0.8316546762589928,
+        "f1": 0.9064000784083113,
+        "tn": 2921,
+        "accuracy": 0.8876470588235295
       },
       "latency": {
-        "totalMs": 10,
+        "totalMs": 40,
         "msPerSample": 0
       }
     }

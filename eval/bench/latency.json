@@ -1,0 +1,47 @@
+{
+  "benchmark": "pii-detection-latency",
+  "benchmarkVersion": 1,
+  "measured": {
+    "detector": "current",
+    "detectorSource": "client/lib/pii-rules.mjs",
+    "coldStartMs": 0.9252,
+    "warm": {
+      "n": 25500,
+      "mean": 0.0031,
+      "p50": 0.0026,
+      "p90": 0.0045,
+      "p95": 0.0074,
+      "p99": 0.011,
+      "max": 0.1273,
+      "unit": "ms"
+    },
+    "samplesPerRun": 8500,
+    "runs": 3,
+    "heapDeltaBytes": 676184
+  },
+  "notMeasured": {
+    "ocrMs": "NOT_MEASURED — Tesseract WASM, needs a browser",
+    "faceDetectionMs": "NOT_MEASURED — MediaPipe, needs a browser",
+    "visionTransformerMs": "NOT_MEASURED — YOLOS/ONNX Runtime, needs a browser (WebGPU/WASM)",
+    "screenshotCaptureMs": "NOT_MEASURED",
+    "redactionMs": "NOT_MEASURED — canvas + JPEG encode, needs a browser",
+    "networkRoundTripMs": "NOT_MEASURED — depends on the VLM endpoint",
+    "endToEndMs": "NOT_MEASURED"
+  },
+  "environment": {
+    "timestamp": "2026-09-02T15:23:51.300Z",
+    "gitCommit": "78d05d8",
+    "gitBranch": "working",
+    "gitDirty": true,
+    "nodeVersion": "v24.16.0",
+    "v8": "13.6.233.17-node.49",
+    "os": "Darwin 25.6.0",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpuModel": "Apple M3",
+    "cpuCount": 8,
+    "totalMemGB": 17.2,
+    "corpusFile": "/Users/manas/SIH/eval/bench/corpus.jsonl",
+    "warmupIterations": 500
+  }
+}

@@ -8,11 +8,31 @@ unicode, OCR corruption, and same-shaped decoys.
 ## Run it
 
 ```bash
-node eval/bench/gen-corpus.mjs --n-per-category 200 --n-clean 700 --n-composite 300 --seed 20260830
-node eval/bench/run.mjs                 # all detectors -> results.md + results.json
-node eval/bench/run.mjs current baseline  # subset
-LIMIT=300 node eval/bench/run.mjs         # first N samples (for slow detectors)
+node eval/bench/gen-corpus.mjs --seed 20260902           # committed ~8,500-sample corpus + manifest
+node eval/bench/gen-corpus.mjs --seed 20260902 --total 100000 --out eval/bench/corpus-100k.jsonl
+node eval/bench/run.mjs                                    # detection: results.md + results.json
+node eval/bench/run.mjs --corpus eval/bench/corpus-100k.jsonl
+node eval/bench/redaction.mjs                              # redaction: leakage / IoU / over-redaction
+LIMIT=300 node eval/bench/run.mjs                          # first N samples (for slow detectors)
+
+# npm: bench (small), bench:large (100k), bench:redaction, bench:competitors
+
+# from Python (competitors), via the node bridge:
+echo '["Aadhaar 2345 6789 0124"]' | node eval/bench/detect-cli.mjs --detector current
 ```
+
+Every generated corpus writes a `*.manifest.json` alongside it (seed, git commit,
+node version, per-category / per-class / per-surface-form counts, span-offset
+errors). Ground-truth generators + independent Verhoeff/Luhn validators (never
+imported from the detector, anchored to a published known-answer vector) live in
+`lib/independent-validators.mjs`, proven by `tests/independent-validators.test.mjs`.
+
+## Corpus scale
+
+Deterministic from `--seed` alone. `--total N` scales every bucket to ~N,
+preserving ratios. Verified reproducible at 100k (0.4s) and 1M (3.8s), 0
+span-offset errors. The committed corpus stays small (~8.5k) for fast CI;
+larger ones are gitignored and regenerated on demand.
 
 Change `--seed` to get a fresh corpus — scores should move < ~1 F1 point. If they
 move more, the detector is memorising wording rather than structure.
@@ -45,9 +65,10 @@ move more, the detector is memorising wording rather than structure.
 - **Span level** (the number that matters for redaction): a prediction is a TP if
   its category matches a gold span AND character IoU ≥ 0.5. Greedy 1:1 per
   sample. Micro-averaged. Reported per category + overall.
-- **Recall by context**: recall split into keyworded / bare / ocr-garbled /
-  composite so the context-gating trade-off is explicit — shape-only IDs
-  (voter-id, passport, DOB, SSN) are *designed* to miss bare instances.
+- **Results by class (Phase 4)**: `run.mjs` reports A (contextual positive) /
+  B (unlabelled positive) / C (structured-identifier positive) / D (adversarial
+  negative) / clean / OCR / composite **separately**. The blended overall F1 is
+  still shown but flagged — B recall being below A recall is by design.
 - **Line level**: on a positive line did it flag ≥1 span; on a negative line did
   it stay silent → "would we have redacted this line correctly".
 - **Latency**: wall-clock ms/sample.

@@ -1,7 +1,6 @@
 // Adversarial PII benchmark corpus generator (large).
 //
-// Mirrors the interface of an external `independent_pii_benchmark.py`:
-//   node eval/bench/gen-corpus.mjs --n-per-category 200 --n-clean 700 --n-composite 300 --seed 20260830
+//   node eval/bench/gen-corpus.mjs --n-per-category 200 --n-clean 700 --n-composite 300 --seed 20260902
 //
 // Methodology / bias controls (also in bench/README.md):
 //  - LABELS come only from generation parameters. A detector is NEVER run to
@@ -21,20 +20,38 @@
 // Output: eval/bench/corpus.jsonl  — {id, text, spans:[{category,value,start,end}], kind}
 
 import { writeFileSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { verhoeffValid, luhnValid } from "../../client/lib/pii-rules.mjs";
+// Phase 2: ground truth is validated with the INDEPENDENT implementation, never
+// the detector under test (client/lib/pii-rules.mjs).
+import { isValidVerhoeff as verhoeffValid, isValidLuhn as luhnValid } from "./lib/independent-validators.mjs";
 
 // ---- args ------------------------------------------------------------
 const arg = (k, d) => {
   const i = process.argv.indexOf(`--${k}`);
   return i > -1 ? process.argv[i + 1] : d;
 };
-const N_CAT = Number(arg("n-per-category", 200));
-const N_CLEAN = Number(arg("n-clean", 700));
-const N_COMPOSITE = Number(arg("n-composite", 300));
-const SEED = Number(arg("seed", 20260830));
-const OUT = join(dirname(fileURLToPath(import.meta.url)), "corpus.jsonl");
+// --total N  scales every bucket to land near N samples, preserving the ratio
+// of the committed corpus (~200 pos + ~160 neg per category, 700 clean, 300
+// composite, 60 regression → ~6100). Explicit --n-* flags still override.
+const TOTAL = arg("total", null);
+let baseCat = 200, baseClean = 700, baseComposite = 300;
+if (TOTAL != null) {
+  const scale = Number(TOTAL) / 6100;
+  baseCat = Math.max(1, Math.round(200 * scale));
+  baseClean = Math.max(1, Math.round(700 * scale));
+  baseComposite = Math.max(1, Math.round(300 * scale));
+}
+const N_CAT = Number(arg("n-per-category", baseCat));
+const N_CLEAN = Number(arg("n-clean", baseClean));
+const N_COMPOSITE = Number(arg("n-composite", baseComposite));
+const SEED = Number(arg("seed", 20260902));
+const OUT = arg("out", null)
+  ? (arg("out").startsWith("/") ? arg("out") : join(process.cwd(), arg("out")))
+  : join(dirname(fileURLToPath(import.meta.url)), "corpus.jsonl");
+const MANIFEST = OUT.replace(/\.jsonl$/, "") + ".manifest.json";
+const CORPUS_VERSION = 2; // bump when the generation logic changes
 
 // ---- seeded PRNG ----------------------------------------------------
 function mulberry32(seed) {
@@ -66,6 +83,8 @@ function verhoeffCheck(numStr) {
   return VINV[c];
 }
 function validAadhaar() {
+  // generate body -> derive check digit -> ACCEPT ONLY IF the independent
+  // validator agrees (Phase 2 contract).
   const body = String(2 + ri(8)) + digits(10);
   const full = body + verhoeffCheck(body);
   return verhoeffValid(full) ? full : validAadhaar();
@@ -152,11 +171,24 @@ function grp(str, sizes) {
 }
 const SEP = { plain: "", space: " ", space2: "  ", hyphen: "-", dot: ".", nbsp: " ", endash: "–", thin: " " };
 const NUM_FORMS = ["plain", "space", "space2", "hyphen", "dot", "nbsp", "endash", "deva", "ocr"];
+// Unicode-digit maps for the OCR/i18n robustness axis (Phase 6). pii-rules.mjs
+// normalize() is expected to fold all of these to ASCII before matching.
+const ARAB = "٠١٢٣٤٥٦٧٨٩";
+const PERS = "۰۱۲۳۴۵۶۷۸۹";
+const FW = "０１２３４５６７８９";
+const toMap = (m) => (s) => s.replace(/[0-9]/g, (dd) => m[+dd]);
+const toArab = toMap(ARAB), toPers = toMap(PERS), toFW = toMap(FW);
+const ZWSP = "​";
 function renderNum(d, sizes, form) {
   if (form === "deva") return toDev(grp(d, sizes).join(" "));
+  if (form === "arab") return toArab(grp(d, sizes).join(" "));
+  if (form === "pers") return toPers(grp(d, sizes).join(" "));
+  if (form === "fullwidth") return toFW(grp(d, sizes).join(" "));
+  if (form === "zwsp") return grp(d, sizes).join("").split("").join(ZWSP);
   if (form === "ocr") return ocrConfuse(grp(d, sizes).join(" "));
   return grp(d, sizes).join(SEP[form] ?? "");
 }
+const UNICODE_FORMS = ["deva", "arab", "pers", "fullwidth", "nbsp", "endash", "zwsp"];
 const SIZES = { aadhaar: [4, 4, 4], card16: [4, 4, 4, 4], card15: [4, 6, 5], card14: [4, 6, 4], card13: [4, 4, 5], phone: [5, 5] };
 const cardSizes = (n) => n === 15 ? SIZES.card15 : n === 14 ? SIZES.card14 : n === 13 ? SIZES.card13 : SIZES.card16;
 
@@ -242,12 +274,12 @@ const CLEAN = [
 // ---- assembly ------------------------------------------------
 let idc = 0;
 const samples = [];
-function emitPos(category, value, tpl, kind) {
+function emitPos(category, value, tpl, kind, form = "ascii") {
   const marker = "";
   let text = tpl.replace("{v}", marker);
   const at = text.indexOf(marker);
   text = text.slice(0, at) + value + text.slice(at + 1);
-  samples.push({ id: `s${++idc}`, text, spans: [{ category, value, start: at, end: at + value.length }], kind });
+  samples.push({ id: `s${++idc}`, text, spans: [{ category, value, start: at, end: at + value.length }], kind, form });
 }
 function emitNeg(kind, text) { samples.push({ id: `s${++idc}`, text, spans: [], kind }); }
 
@@ -262,27 +294,57 @@ for (const cat of ["aadhaar", "credit-card", "phone-in", ...Object.keys(ALNUM_GE
   const nNeg = Math.round(N_CAT * 0.8);
   for (let k = 0; k < nPos; k++) {
     let value;
-    if (cat === "aadhaar") value = renderNum(validAadhaar(), SIZES.aadhaar, pick(NUM_FORMS));
-    else if (cat === "credit-card") { const c = validCard(); value = pick(NUM_FORMS) === "deva" ? toDev(c) : renderNum(c, cardSizes(c.length), pick(NUM_FORMS)); }
+    let form = "ascii"; // surface form of the value — the Unicode/OCR axis (Phase 6)
+    if (cat === "aadhaar") { form = pick(NUM_FORMS); value = renderNum(validAadhaar(), SIZES.aadhaar, form); }
+    else if (cat === "credit-card") { const c = validCard(); form = pick(NUM_FORMS); value = form === "deva" ? toDev(c) : renderNum(c, cardSizes(c.length), form); }
     else if (cat === "phone-in") {
-      let p = renderNum(String(6 + ri(4)) + digits(9), SIZES.phone, pick(NUM_FORMS));
+      form = pick(NUM_FORMS);
+      let p = renderNum(String(6 + ri(4)) + digits(9), SIZES.phone, form);
       if (chance(0.5)) p = pick(["+91 ", "+91-", "0", "91 ", "+91"]) + p;
       value = p;
     } else {
       value = ALNUM_GEN[cat]();
     }
+    // normalise the form label: plain/space/space2/hyphen/dot are all ASCII;
+    // nbsp/endash/deva are Unicode; ocr is corruption.
+    if (["plain", "space", "space2", "hyphen", "dot"].includes(form)) form = "ascii";
     // ~15% of alphanumeric IDs get OCR-garbled (letter<->digit confusions) - a
     // real failure mode for a tool that reads screenshots. Tracked separately.
-    let ocr = false;
-    if (["pan", "voter-id", "passport-in", "ifsc", "gstin", "vehicle-reg"].includes(cat) && chance(0.15)) { value = ocrConfuse(value); ocr = true; }
+    let ocr = form === "ocr";
+    if (!ocr && ["pan", "voter-id", "passport-in", "ifsc", "gstin", "vehicle-reg"].includes(cat) && chance(0.15)) {
+      value = ocrConfuse(value); ocr = true; form = "ocr";
+    }
     // ~78% of real-world PII appears near a category keyword or in a labelled
     // field; ~22% bare. Context-gated categories will legitimately miss most of
     // the bare set - that is the precision/recall trade the brief accepts.
     const kw = chance(0.78);
     const tpl = kw ? pick(KW[cat]) : pick(NOKW);
-    emitPos(cat, value, tpl, `pos:${cat}:${ocr ? "ocr" : kw ? "kw" : "bare"}`);
+    emitPos(cat, value, tpl, `pos:${cat}:${ocr ? "ocr" : kw ? "kw" : "bare"}`, form);
   }
   for (let k = 0; k < nNeg; k++) emitNeg(`neg:${cat}`, negFor(cat));
+}
+
+// ---- Phase 6: dedicated Unicode / OCR robustness stress -------------
+// Keyworded positives whose VALUE is rendered in a non-ASCII digit system or
+// with invisible separators. Enough per (category × form) to measure recall.
+// run.mjs reports recall per surface form; the gap between `current` (which
+// includes normalize()) and `naive-regex` (which does not) IS the
+// normalization contribution — reported, not hidden.
+const STRESS_FORMS = [...UNICODE_FORMS, "ocr"];
+const STRESS_N = Math.max(6, Math.round(N_CAT * 0.5));
+for (const cat of ["aadhaar", "credit-card", "phone-in"]) {
+  for (const form of STRESS_FORMS) {
+    for (let k = 0; k < STRESS_N; k++) {
+      let base;
+      if (cat === "aadhaar") base = validAadhaar();
+      else if (cat === "credit-card") base = validCard();
+      else base = String(6 + ri(4)) + digits(9);
+      const sizes = cat === "aadhaar" ? SIZES.aadhaar : cat === "phone-in" ? SIZES.phone : cardSizes(base.length);
+      const value = renderNum(base, sizes, form);
+      const kindForm = form === "ocr" ? "ocr" : "kw";
+      emitPos(cat, value, pick(KW[cat]), `pos:${cat}:${kindForm}`, form);
+    }
+  }
 }
 
 // aadhaar-substring regression: cards with Verhoeff-passing 12-prefix
@@ -338,12 +400,54 @@ writeFileSync(OUT, samples.map((s) => JSON.stringify(s)).join("\n") + "\n");
 
 const byCat = {};
 for (const s of samples) for (const sp of s.spans) byCat[sp.category] = (byCat[sp.category] || 0) + 1;
+const byKind = {};
+for (const s of samples) byKind[s.kind] = (byKind[s.kind] || 0) + 1;
+const byForm = {}; // Unicode/OCR surface-form axis (Phase 6)
+for (const s of samples) if (s.form) byForm[s.form] = (byForm[s.form] || 0) + 1;
+const byContext = {}; // kw / bare / ocr / composite / neg
+for (const s of samples) {
+  const c = s.kind.startsWith("neg:") ? "negative"
+    : s.kind.includes("composite") ? "composite"
+    : s.kind.split(":").pop();
+  byContext[c] = (byContext[c] || 0) + 1;
+}
 const pos = samples.filter((s) => s.spans.length).length;
 let offErr = 0;
 for (const s of samples) for (const sp of s.spans) if (s.text.slice(sp.start, sp.end) !== sp.value) offErr++;
+
+function gitCommit() {
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: dirname(fileURLToPath(import.meta.url)) })
+      .toString().trim();
+  } catch { return null; }
+}
+const manifest = {
+  corpusVersion: CORPUS_VERSION,
+  generator: "eval/bench/gen-corpus.mjs",
+  seed: SEED,
+  params: { nPerCategory: N_CAT, nClean: N_CLEAN, nComposite: N_COMPOSITE, total: TOTAL ? Number(TOTAL) : null },
+  generatedAt: new Date().toISOString(),
+  gitCommit: gitCommit(),
+  nodeVersion: process.version,
+  samples: samples.length,
+  positiveLines: pos,
+  negativeLines: samples.length - pos,
+  goldSpans: samples.reduce((n, s) => n + s.spans.length, 0),
+  spanOffsetErrors: offErr,
+  goldSpansByCategory: byCat,
+  samplesByKind: byKind,
+  samplesBySurfaceForm: byForm,
+  samplesByContext: byContext,
+  aadhaarSubstringRegressionCards: subCount,
+  out: OUT,
+};
+writeFileSync(MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
+
 console.log(`seed=${SEED}  n-per-category=${N_CAT}  n-clean=${N_CLEAN}  n-composite=${N_COMPOSITE}`);
 console.log(`wrote ${samples.length} samples → ${OUT}`);
-console.log(`  positive lines ${pos} · negative lines ${samples.length - pos} · gold spans ${samples.reduce((n, s) => n + s.spans.length, 0)}`);
+console.log(`wrote manifest → ${MANIFEST}`);
+console.log(`  positive lines ${pos} · negative lines ${samples.length - pos} · gold spans ${manifest.goldSpans}`);
 console.log(`  aadhaar-substring regression cards: ${subCount}`);
 console.log(`  span offset errors: ${offErr}`);
 console.log(`  gold spans / category:`, byCat);
+if (offErr > 0) process.exit(1);

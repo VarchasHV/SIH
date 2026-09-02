@@ -1,0 +1,14 @@
+# Optional — only for `npm run bench:competitors` (eval/bench/competitors/run_competitors.py).
+# The core project and `npm test` / `pytest tests/` do NOT need these.
+#
+#   .venv/bin/pip install -r eval/bench/competitors/requirements.txt
+#   .venv/bin/python -m spacy download en_core_web_sm
+#
+presidio-analyzer>=2.2
+spacy>=3.8
+# optional, heavier:
+# flair>=0.13
+#
+# Commercial APIs (AWS Comprehend / Google Cloud DLP / Azure PII) are NOT wired
+# — run_competitors.py emits them as NOT_EXECUTED. Add boto3 / google-cloud-dlp
+# and credentials to benchmark them for real.
