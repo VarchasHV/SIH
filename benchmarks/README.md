@@ -1,121 +1,37 @@
-# Privacy Lens — Benchmark Suite
+# benchmarks/
 
-Generates a synthetic PII corpus of **2,000 – 20,000 samples** and measures
-detection quality, latency, throughput, and VLM adapter correctness.
-Includes a side-by-side competitor analysis against AWS Comprehend,
-Microsoft Presidio, Google Cloud DLP, and spaCy.
+The fabricated competitor benchmark that used to live here (`run_bench.py`,
+`results/bench_*.json`) has been **removed**. It hard-coded competitor
+precision/recall/latency and generated per-sample outcomes with an RNG
+(`simulate_competitor`). Nothing in it was a real measurement of a competitor.
 
-## Quick Start
+## Real benchmarks
+
+| What | Where | Status |
+|---|---|---|
+| PII detection — span-level, seeded, context-tagged | `eval/bench/` (`gen-corpus.mjs` → `run.mjs`) | active |
+| Independent ground-truth generators + validators | `eval/bench/lib/independent-validators.mjs` | active (Phase 2) |
+| Adversarial corpus + open-source competitors (Presidio / spaCy / Flair) | `scripts/pii_benchmark_unbiased.py` | active; competitors run only if the package is installed, else `UNAVAILABLE` |
+| Node bridge so Python can call the real detector | `eval/bench/detect-cli.mjs` | active |
+
+## The one detector
+
+`client/lib/pii-rules.mjs` is the only Privacy Lens PII detector. The browser
+ships it; every benchmark reaches it through `eval/bench/detectors/current.mjs`
+(directly, or via `detect-cli.mjs` from Python). The old `server/tier1_fastpath.py`
+and `client/lib/tier1-fastpath.mjs` re-implementations have been deleted.
+
+## Commercial APIs
+
+AWS Comprehend, Google Cloud DLP, Azure PII: **NOT EXECUTED** — no credentials
+in this environment. See `results/references.md` for what the vendors document.
+Any future run must call the real API on the same labelled dataset and record
+actual numbers; documented capabilities are never written as benchmark results.
+
+## Run
 
 ```bash
-# Fast run (2,000 samples, ~12s)
-npm run bench:fast
-
-# Standard run (5,000 samples, ~30s)
-.venv/bin/python3 benchmarks/run_bench.py --n 5000
-
-# Full corpus (20,000 samples, ~2 min)
-npm run bench:full
-
-# Include live server round-trips (requires `npm run server` running)
-npm run bench:live
-
-# Machine-readable JSON output
-npm run bench:json
+node eval/bench/gen-corpus.mjs --seed 20260902   # (re)generate the corpus
+node eval/bench/run.mjs                          # score every detector
+python3 scripts/pii_benchmark_unbiased.py        # + open-source competitors
 ```
-
-## What It Measures
-
-### Tier 1 — On-Device Regex / Heuristic Engine
-- **Precision / Recall / F1** per PII category and overall
-- **Per-sample latency** (p50 / p95 / p99 in µs)
-- **Throughput** (samples/sec)
-
-### Tier 2 — VLM Adapter (mock + optionally live Gemini/OpenRouter)
-- **Fill accuracy**: fraction of fields correctly targeted
-- **Tokenized local resolution**: censored fields (SSN, Aadhaar, PAN, credit card, password) get `fillToken: "local:<category>"` — verified the mock proposes them across multi-step runs
-- **Zero PII leak guarantee**: asserts raw sensitive values never appear in the JSON payload sent to the server
-- **Adapter latency** (p50 / p95 / p99 in ms) and **throughput** (req/s)
-
-### Competitor Analysis
-Side-by-side comparison on the **same corpus** against:
-
-| System | On-Device | India PII | Network |
-|---|---|---|---|
-| AWS Comprehend | ✗ | ✗ limited | ✓ required |
-| Microsoft Presidio | ✓ | ✗ limited | ✗ |
-| Google Cloud DLP | ✗ | ✓ Aadhaar/PAN | ✓ required |
-| spaCy (en_core_web_lg) | ✓ | ✗ poor | ✗ |
-| **PrivacyLens On-Device** | **✓** | **✓ full** | **✗** |
-
-> Competitor figures are statistical simulations based on published precision/recall figures.
-> See [`results/references.md`](results/references.md) for data sources.
-
-## Corpus Generation
-
-The synthetic corpus:
-- **60% positives** — balanced across 12 PII categories:
-  `aadhaar`, `pan`, `credit-card`, `ssn`, `email`, `phone-in`,
-  `ifsc`, `upi-vpa`, `dob`, `passport-in`, `voter-id`, `vehicle-reg`
-- **40% negatives** — safe text (order numbers, meeting times, version strings, etc.)
-- Diverse templates per category (8–16 variants each)
-- Checsum-valid Aadhaar (Verhoeff) and Luhn-valid card numbers
-- Seeded with `random.seed(42)` for reproducibility
-
-## Results
-
-Results are saved to `benchmarks/results/bench_<timestamp>.json`.
-
-### Sample Output (N=5,000)
-
-```
-========================================================================
- Privacy Lens — Benchmark Report   N=5,000
-
-  Tier 1 · On-Device Detection
-     Precision    Recall        F1    p50 µs    p99 µs    Throughput
-     99.6%        73.6%      84.7%        24      1064       3.2k/s
-
-  Per-Category Breakdown:
-  ssn          TP=248  FP=0   FN=2    Prec=100%  Rec=99.2%  F1=99.6%
-  email        TP=250  FP=0   FN=0    Prec=100%  Rec=100%   F1=100%
-  phone-in     TP=227  FP=0   FN=23   Prec=100%  Rec=90.8%  F1=95.2%
-  upi-vpa      TP=250  FP=0   FN=0    Prec=100%  Rec=100%   F1=100%
-  voter-id     TP=250  FP=0   FN=0    Prec=100%  Rec=100%   F1=100%
-  vehicle-reg  TP=250  FP=0   FN=0    Prec=100%  Rec=100%   F1=100%
-  ifsc         TP=250  FP=0   FN=0    Prec=100%  Rec=100%   F1=100%
-  aadhaar      TP=27   FP=8   FN=223  Prec=77.1% Rec=10.8%  F1=18.9%
-  pan          TP=107  FP=0   FN=143  Prec=100%  Rec=42.8%  F1=59.9%
-  credit-card  TP=27   FP=0   FN=223  Prec=100%  Rec=10.8%  F1=19.5%
-
-  Competitor Analysis:
-  System                  Prec   Rec    F1    p50    p99    On-Device
-  AWS Comprehend          89.7%  43.6%  58.7%  180ms  650ms  ✗
-  Microsoft Presidio      86.3%  44.6%  58.8%   12ms   95ms  ✓
-  Google Cloud DLP        95.5%  76.1%  84.7%  220ms  800ms  ✗
-  spaCy PII               72.2%  29.7%  42.1%   28ms  120ms  ✓
-  PrivacyLens On-Device   99.6%  73.6%  84.7%    0ms    1ms  ✓
-
-  Tier 2 · VLM Adapter (mock, 500 rounds):
-    Fill accuracy:                40.0%
-    Tokenized fill (censored):    PASS ✓
-    Zero PII leak guarantee:      PASS ✓
-    Latency p50=0.0ms p99=0.1ms
-    Throughput: 27,813 req/s
-```
-
-## Key Findings
-
-### PrivacyLens Advantages
-1. **Highest precision (99.6%)** — near-zero false positives on safe text
-2. **Fastest on-device** — p50 < 0.05ms vs 12–220ms for competitors
-3. **Only solution with full Indian PII coverage** — Aadhaar (Verhoeff checksum), PAN, UPI, IFSC, Vehicle Reg, Voter ID
-4. **Privacy-first by design** — zero network dependency, tokenized fills keep real values off-server
-
-### Areas for Improvement
-- **Aadhaar recall (10.8%)**: The Verhoeff checksum is strict. Context-gated synthetic Aadhaar numbers often fail the checksum because our random generator uses a simplified algorithm. Real Aadhaar corpus recall is significantly higher.
-- **Credit card recall (10.8%)**: Luhn+IIN prefix filtering correctly rejects non-card 16-digit strings (IMEIs, etc.). Synthetic random card numbers without proper IIN prefixes are legitimately rejected.
-- **PAN recall (42.8%)**: PAN structural check (4th char `P/C/H/F/A/B/G/J/L/T`) filters synthetic PAN numbers generated without this rule.
-
-> These low-recall categories reflect **correct rejections** of invalid synthetic values, not bugs.
-> Real-world recall on genuine PII text is substantially higher (see the existing `pii-corpus.jsonl`).

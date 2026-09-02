@@ -19,6 +19,12 @@ client/vendor/*
 # Eval output
 eval/out/
 
+# Large generated benchmark corpora (regenerate: npm run bench:large)
+eval/bench/corpus-*.jsonl
+eval/bench/corpus-*.manifest.json
+eval/bench/corpus-*.results.*
+eval/bench/corpus-*.redaction.*
+
 # Misc
 *.local
 

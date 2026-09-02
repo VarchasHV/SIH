@@ -21,8 +21,11 @@ from pathlib import Path
 ROOT = Path(__file__).parent.parent
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Checksum helpers (duplicated from pii-rules.mjs so we can generate valid
-# test values independently of the rules under test)
+# Checksum helpers for GENERATING valid corpus values. Written here rather than
+# imported, so the ground truth is independent of the detector under test.
+# (The JS benchmark's independent generator lives in
+#  eval/bench/lib/independent-validators.mjs — anchored to a published
+#  known-answer vector.)
 # ═══════════════════════════════════════════════════════════════════════════
 
 _VD = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],
@@ -296,35 +299,43 @@ def score(samples, predictions):
             if w not in pred: fn+=1
     return prf(tp,fp,fn)
 
-# ── Privacy Lens ────────────────────────────────────────────────────────────
+# ── Privacy Lens (THE canonical detector — client/lib/pii-rules.mjs) ─────────
+#
+# There is exactly one Privacy Lens PII detector: client/lib/pii-rules.mjs, the
+# code the browser extension ships. We reach it from Python through the Node
+# bridge eval/bench/detect-cli.mjs so this benchmark can never drift from what
+# actually runs. No Python re-implementation.
 
+import shutil
 import sys
-sys.path.insert(0, str(ROOT / "server"))
-from tier1_fastpath import Tier1_FastPath
 
-def _pl_detect(text):
-    hits = Tier1_FastPath.detect(text)
-    return set(h["category"] for h in hits)
+_NODE = shutil.which("node")
+_DETECT_CLI = ROOT / "eval" / "bench" / "detect-cli.mjs"
+
+def _run_js_detector(detector, texts):
+    """Return (list[set[str]] predictions, mean_ms_per_sample). Raises on failure."""
+    if not _NODE:
+        raise RuntimeError("node not found on PATH — cannot run the Privacy Lens detector")
+    proc = subprocess.run(
+        [_NODE, str(_DETECT_CLI), "--detector", detector],
+        input=json.dumps(texts), capture_output=True, text=True, cwd=str(ROOT),
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"detect-cli ({detector}) failed: {proc.stderr[:300]}")
+    rows = json.loads(proc.stdout)
+    preds = [set(r["categories"]) for r in rows]
+    mean_ms = sum(r["ms"] for r in rows) / len(rows) if rows else 0.0
+    return preds, mean_ms
 
 def run_privacy_lens(samples):
-    t0 = time.perf_counter()
-    preds = [_pl_detect(s["text"]) for s in samples]
-    ms = (time.perf_counter()-t0)*1000/len(samples)
-    return score(samples, preds), ms
+    preds, ms = _run_js_detector("current", [s["text"] for s in samples])
+    return score(samples, preds), ms, preds
 
-# ── Regex-only baseline (identical patterns, NO checksums) ─────────────────
-
-_REGEX_RULES = [(p["category"], p["regex"]) for p in Tier1_FastPath.PATTERNS]
+# ── Regex-only baseline: same corpus, loose patterns, NO checksums/gating ────
+# (eval/bench/detectors/naive-regex.mjs — shows what the engineering buys.)
 
 def run_regex_baseline(samples):
-    t0 = time.perf_counter()
-    preds = []
-    for s in samples:
-        cats = set()
-        for cat, rx in _REGEX_RULES:
-            if rx.search(s["text"]): cats.add(cat)
-        preds.append(cats)
-    ms = (time.perf_counter()-t0)*1000/len(samples)
+    preds, ms = _run_js_detector("naive-regex", [s["text"] for s in samples])
     return score(samples, preds), ms
 
 # ── Microsoft Presidio ──────────────────────────────────────────────────────
@@ -413,14 +424,13 @@ def run_flair(samples):
 # ANALYSIS: per-category breakdown for Privacy Lens
 # ═══════════════════════════════════════════════════════════════════════════
 
-def per_category_breakdown(samples):
+def per_category_breakdown(samples, pl_preds):
     cats = sorted(set(c for s in samples for c in s["categories"]))
     rows = []
     for cat in cats:
         tp=fp=fn=0
-        for s in samples:
+        for s, pred_set in zip(samples, pl_preds):
             want = cat in s["categories"]
-            pred_set = _pl_detect(s["text"])
             got = cat in pred_set
             if want and got:   tp+=1
             elif got and not want: fp+=1
@@ -448,8 +458,8 @@ def main():
     print(f"  Includes false-positive traps + false-negative traps for Privacy Lens")
     print(f"{'='*95}\n")
 
-    print("  [1/5] Privacy Lens (regex + checksums)...")
-    pl_m, pl_lat = run_privacy_lens(samples)
+    print("  [1/5] Privacy Lens (client/lib/pii-rules.mjs via node bridge)...")
+    pl_m, pl_lat, pl_preds = run_privacy_lens(samples)
 
     print("  [2/5] Regex-only baseline (no checksums)...")
     re_m, re_lat = run_regex_baseline(samples)
@@ -467,7 +477,7 @@ def main():
     if fl_m is None: print(f"         ⚠  {fl_lat}")
 
     all_results = [
-        ("Privacy Lens (regex + checksums)", pl_m, pl_lat),
+        ("Privacy Lens (pii-rules.mjs)",     pl_m, pl_lat),
         ("Regex-only (no checksums)",        re_m, re_lat),
         ("Microsoft Presidio",               pr_m, pr_lat),
         ("spaCy NER (en_core_web_sm)",       sp_m, sp_lat),
@@ -489,18 +499,18 @@ def main():
     print(f"\n  Privacy Lens — per-category breakdown (honest):")
     print(f"  {'Category':<18}  {'P':>7}  {'R':>7}  {'F1':>7}  TP  FP  FN  Note")
     print(f"  {'─'*80}")
-    for cat, tp, fp, fn, p, r, f in per_category_breakdown(samples):
+    for cat, tp, fp, fn, p, r, f in per_category_breakdown(samples, pl_preds):
         note = ""
         if fp > 0: note = f"⚠  {fp} false positive(s)"
         if fn > 0: note += f"{'  ' if note else ''}⚠  {fn} missed"
         print(f"  {cat:<18}  {p*100:>6.0f}%  {r*100:>6.0f}%  {f*100:>6.0f}%   {tp:>1}   {fp:>1}   {fn:>1}  {note}")
 
-    valid = [(n,m,l) for n,m,l in all_results if m]
-    if valid:
-        best    = max(valid, key=lambda x: x[1]["f1"])
-        fastest = min(valid, key=lambda x: x[2])
-        print(f"\n  🏆  Highest F1  : {best[0]} ({best[1]['f1']*100:.1f}%)")
-        print(f"  ⚡  Fastest      : {fastest[0]} (~{fastest[2]:.4f} ms/sample)")
+    unavailable = [n for n, m, _ in all_results if m is None]
+    if unavailable:
+        print(f"\n  Not measured this run (package not installed): {', '.join(unavailable)}")
+    print("\n  NOTE: latency is per-sample detection time only. The Node-bridge figure for")
+    print("  Privacy Lens excludes process startup; cross-tool latency is not directly")
+    print("  comparable here — see the dedicated latency harness (Phase 12).")
 
     print(f"\n{'='*95}\n")
 
