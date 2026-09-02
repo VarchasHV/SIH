@@ -212,7 +212,10 @@ def _mock(req: StepRequest) -> StepResponse:
         if wants_submit:
             btn = next((n for n in req.skeleton.nodes
                         if (n.isSubmit or n.tag == "button" or n.role == "button")
-                        and re.search(r"submit|apply|continue|pay|save|verify", (n.text or ""), re.I)), None)
+                        and re.search(r"submit|apply|continue|pay|save|verify|send|finish|complete|proceed|confirm|register|create|next|checkout|place order", (n.text or ""), re.I)), None)
+            # fall back to any submit-typed control if no label matched
+            if btn is None:
+                btn = next((n for n in req.skeleton.nodes if n.isSubmit), None)
             if btn:
                 return StepResponse(actions=[Action(action="submit", targetId=btn.id)],
                                     rationale="All visible fields handled; submitting.", model="mock")

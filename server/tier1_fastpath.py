@@ -97,22 +97,24 @@ class Tier1_FastPath:
             "validator": None,
             "confidence": 0.85,
         },
-        # [FIX 3: SSN] - Negative lookbehind to ignore Order/Ref/ID prefixes
+        # [FIX 3: SSN] - reject Order/Ref/ID-prefixed sequences via a preceding-
+        # context check (stdlib `re` forbids variable-width lookbehind, so the
+        # gate lives in `neg_prefix`, applied in detect()).
         {
             "category": "ssn",
-            "regex": re.compile(
-                r"(?<!(?:order|ref|id|batch|serial|part)[:\s-]*)\b\d{3}-\d{2}-\d{4}\b",
-                re.IGNORECASE,
-            ),
+            "regex": re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+            "neg_prefix": re.compile(r"(?:order|ref|id|batch|serial|part)\s*[:#-]?\s*$", re.IGNORECASE),
             "validator": None,
             "confidence": 0.92,
         },
-        # [FIX 4: IPv4] - Negative lookbehind to ignore software version identifiers
+        # [FIX 4: IPv4] - reject software version identifiers (v1.2.3.4) via
+        # preceding-context check.
         {
             "category": "ipv4",
             "regex": re.compile(
-                r"(?<![vV](?:ersion)?\.?\s*)\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
+                r"\b(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\b"
             ),
+            "neg_prefix": re.compile(r"(?:\bv|\bversion)\.?\s*$", re.IGNORECASE),
             "validator": None,
             "confidence": 0.85,
         },
@@ -187,8 +189,13 @@ class Tier1_FastPath:
 
         hits: List[Dict[str, Any]] = []
         for rule in cls.PATTERNS:
+            neg_prefix = rule.get("neg_prefix")
             for match in rule["regex"].finditer(text):
                 val = match.group(0)
+                # Context gate: skip matches immediately preceded by a
+                # disqualifying token (e.g. "Order: 123-45-6789", "v1.2.3.4").
+                if neg_prefix and neg_prefix.search(text[max(0, match.start() - 24):match.start()]):
+                    continue
                 validator = rule["validator"]
                 if validator and not validator(val):
                     continue
