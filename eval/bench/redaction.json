@@ -5,8 +5,8 @@
     "pad": 0,
     "corpusFile": "/Users/manas/SIH/eval/bench/corpus.jsonl",
     "environment": {
-      "timestamp": "2026-09-02T16:03:28.003Z",
-      "gitCommit": "3ca3036",
+      "timestamp": "2026-09-02T16:15:56.705Z",
+      "gitCommit": "5c0c3a2",
       "gitBranch": "working",
       "gitDirty": true,
       "nodeVersion": "v24.16.0",

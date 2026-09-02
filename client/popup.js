@@ -346,6 +346,11 @@ chrome.runtime.onMessage.addListener((m) => {
       log(`${e.action.action} ${e.action.targetId || ""} → ${r.note || "?"}${r.verified === false ? " (unverified)" : ""}`, r.ok ? "ok" : "err");
       break;
     }
+    case "action-risk": {
+      const cls = e.risk === "CRITICAL" || e.risk === "HIGH" ? "err" : e.risk === "MEDIUM" ? "" : "ok";
+      log(`action firewall: ${e.action.action} ${e.action.targetId || ""} → ${e.risk} (${e.decision})${e.exfil ? ` · ⚠ exfil via ${e.exfil.channel}: ${e.exfil.categories.join(",")}` : ""}${e.reasons?.length ? " · " + e.reasons[0] : ""}`, cls);
+      break;
+    }
     case "error":
       log(`error [${e.where || ""}]: ${e.message}`, "err");
       if (e.retryable) {

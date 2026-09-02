@@ -24,6 +24,7 @@ import { classifyContent, detectPromptInjection } from "../../client/lib/adversa
 import { detectPII } from "../../client/lib/pii-rules.mjs";
 import { scanSecrets } from "../../client/lib/secret-scanner.mjs";
 import { enforceEgressPolicy } from "../../client/lib/security-policy.mjs";
+import { classifyAction } from "../../client/lib/action-firewall.mjs";
 import { assertNoCanaryEgress } from "../../client/lib/canary.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -31,8 +32,9 @@ const LAB = join(HERE, "..", "..", "security-lab");
 const manifest = JSON.parse(readFileSync(join(LAB, "manifest.json"), "utf8"));
 
 // threat types the CURRENT engines can decide; others are reported as coverage gaps
-const IMPLEMENTED_THREATS = new Set(["prompt_injection", "hidden_content", "sensitive_document", "data_exfiltration_url"]);
-const S4_THREATS = new Set(["phishing_domain", "credential_form_off_brand", "form_exfiltration", "sensitive_fields_off_origin", "malicious_download", "prompt_injection_image"]);
+const IMPLEMENTED_THREATS = new Set(["prompt_injection", "hidden_content", "sensitive_document", "data_exfiltration_url", "form_exfiltration", "sensitive_fields_off_origin", "malicious_download"]);
+const S4_THREATS = new Set(["phishing_domain", "credential_form_off_brand", "prompt_injection_image"]);
+const BUILT_LAYERS = ["content", "egress", "action"];
 
 function analysePage(html, expected) {
   const s = extractHtmlSurfaces(html);
@@ -74,6 +76,34 @@ function analysePage(html, expected) {
   const pageThreats = injectionHits.map((h) => ({ verdict: h.verdict, confidence: h.confidence, indicators: h.indicators, where: h.where }));
   const gate = enforceEgressPolicy(payload, { destination: s.declaredUrl || "about:blank", destinationTrust: 0.6, pageThreats });
 
+  // ── action firewall — classify the riskiest action the agent could be lured into ──
+  const pageOrigin = (() => { try { return new URL(s.declaredUrl || "https://page.example").origin; } catch { return "https://page.example"; } })();
+  const pageMalicious = injectionHits.some((h) => h.verdict === "MALICIOUS");
+  const candidateActions = [];
+  for (const l of s.links) {
+    let abs = l.href;
+    try { abs = new URL(l.href, s.declaredUrl || "https://page.example/").href; } catch {}
+    candidateActions.push({
+      act: { action: "click", targetId: `link:${l.text.slice(0, 20)}` },
+      node: { href: abs, text: l.text, downloadAttr: /\bdownload\b/i.test(l.text) || /\.(scr|exe|msi|dmg|apk)/i.test(abs) },
+    });
+  }
+  for (const f of s.forms) {
+    if (!f.action) continue;
+    let fo = null;
+    try { fo = new URL(f.action, s.declaredUrl || "https://page.example/").origin; } catch {}
+    const sensitive = s.inputs.some((i) => /password|cc-number|cc-csc/i.test(i.autocomplete) || /card|cvv|aadhaar|otp|password/i.test(i.name));
+    candidateActions.push({
+      act: { action: "submit", targetId: "form" },
+      node: { formAction: f.action, formOrigin: fo, formCrossOrigin: fo && fo !== pageOrigin, text: sensitive ? "Pay" : "Submit", name: sensitive ? "card" : "" },
+    });
+  }
+  const actionVerdicts = candidateActions.map(({ act, node }) => ({
+    ...classifyAction(act, { targetNode: node, pageOrigin, pageMalicious }),
+    what: node.href ? `click ${node.href.slice(0, 60)}` : `submit -> ${node.formOrigin || node.formAction}`,
+  }));
+  const worstAction = actionVerdicts.reduce((w, v) => (["LOW", "MEDIUM", "HIGH", "CRITICAL"].indexOf(v.risk) > ["LOW", "MEDIUM", "HIGH", "CRITICAL"].indexOf(w.risk || "LOW") ? v : w), { risk: "LOW", decision: "ALLOW" });
+
   // canary containment
   let canary = { checked: false, ok: true, leaked: [] };
   if (expected.canaries?.length) {
@@ -87,6 +117,9 @@ function analysePage(html, expected) {
     policyDecision: gate.result.decision,
     policyClass: gate.result.classification,
     policyReasons: gate.result.reasons,
+    actionWorstRisk: worstAction.risk,
+    actionWorstDecision: worstAction.decision,
+    actionExfil: actionVerdicts.some((v) => v.exfil),
     canary,
   };
 }
@@ -110,7 +143,9 @@ for (const p of manifest.pages) {
   if (a.hasInjection) detected.add("prompt_injection");
   if (a.hasHidden && a.hasInjection) detected.add("hidden_content");
   if (a.piiCats.length && (p.threats || []).includes("sensitive_document")) detected.add("sensitive_document");
-  if ((p.threats || []).includes("data_exfiltration_url") && a.piiCats.length) detected.add("data_exfiltration_url");
+  if ((p.threats || []).includes("data_exfiltration_url") && (a.actionExfil || a.piiCats.length)) detected.add("data_exfiltration_url");
+  if (a.actionExfil || a.actionWorstRisk === "CRITICAL") { detected.add("form_exfiltration"); detected.add("sensitive_fields_off_origin"); }
+  if ((p.threats || []).includes("malicious_download") && ["HIGH", "CRITICAL"].includes(a.actionWorstRisk)) detected.add("malicious_download");
 
   for (const t of expThreats) (detected.has(t) ? tThreatTP++ : tThreatFN++);
   const threatMiss = expThreats.filter((t) => !detected.has(t));
@@ -124,7 +159,7 @@ for (const p of manifest.pages) {
   // OR the injection is flagged MALICIOUS (agent would quarantine the content)
   if (p.isAttack) {
     attackTotal++;
-    const prevented = a.policyDecision !== "ALLOW" || a.hasInjection;
+    const prevented = a.policyDecision !== "ALLOW" || a.hasInjection || ["HIGH", "CRITICAL"].includes(a.actionWorstRisk);
     if (prevented) attackPrevented++;
     const layer = p.preventionLayer || "unknown";
     byLayer[layer] ??= { prevented: 0, total: 0 };
@@ -158,9 +193,8 @@ const result = {
     testedAttackPreventionRate: +(attackPrevented / attackTotal).toFixed(3),
     attackPreventionByLayer: Object.fromEntries(Object.entries(byLayer).map(([k, v]) => [k, `${v.prevented}/${v.total}`])),
     attackPreventionForBuiltLayers: (() => {
-      const built = ["content", "egress"];
       let p = 0, t = 0;
-      for (const l of built) if (byLayer[l]) { p += byLayer[l].prevented; t += byLayer[l].total; }
+      for (const l of BUILT_LAYERS) if (byLayer[l]) { p += byLayer[l].prevented; t += byLayer[l].total; }
       return t ? `${p}/${t}` : "0/0";
     })(),
     piiPagesFullyDetected: `${piiDetectedFully}/${piiPagesExpected.length}`,
@@ -198,7 +232,7 @@ md += `| Latency / page | ${result.totals.msPerPage} ms |\n\n`;
 md += `\n**Attack prevention by layer** (a page is "prevented" if the egress policy would not ALLOW it or the content is flagged MALICIOUS):\n\n`;
 md += `| Layer | Prevented | Status |\n|---|--:|---|\n`;
 for (const [l, v] of Object.entries(result.totals.attackPreventionByLayer)) {
-  const status = l === "content" || l === "egress" ? "built (S1–S2)" : l === "action" ? "S3 — action firewall" : l === "url" || l === "form" ? "S4" : l === "content-ocr" ? "needs OCR — NOT MEASURED headless" : "?";
+  const status = BUILT_LAYERS.includes(l) ? "built (S1–S3)" : l === "url" || l === "form" ? "S4" : l === "content-ocr" ? "needs OCR — NOT MEASURED headless" : "?";
   md += `| ${l} | ${v} | ${status} |\n`;
 }
 md += `\n`;

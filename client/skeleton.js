@@ -114,6 +114,21 @@
         node.text = (el.textContent || el.value || "").trim().slice(0, 60);
         node.isSubmit = tag === "button" ? (el.type === "submit" || !el.type) : false;
       }
+      // Action-firewall inputs (stay local; the egress policy strips PII from href).
+      if (tag === "a" && el.getAttribute("href")) {
+        try { node.href = new URL(el.getAttribute("href"), location.href).href; } catch { node.href = el.getAttribute("href"); }
+        node.downloadAttr = el.hasAttribute("download");
+      }
+      const ownerForm = el.form || el.closest?.("form");
+      if (ownerForm && (tag === "input" || tag === "button" || tag === "select" || tag === "textarea")) {
+        try {
+          const fa = new URL(ownerForm.getAttribute("action") || location.href, location.href);
+          node.formAction = fa.href;
+          node.formOrigin = fa.origin;
+          node.formCrossOrigin = fa.origin !== location.origin;
+        } catch { /* ignore */ }
+        node.formMethod = (ownerForm.getAttribute("method") || "get").toLowerCase();
+      }
       nodes.push(node);
     });
     const hasCanvas = document.querySelectorAll("canvas").length > 0;

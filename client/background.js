@@ -17,6 +17,7 @@ import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensit
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
 import { enforceEgressPolicy } from "./lib/security-policy.mjs";
+import { classifyAction } from "./lib/action-firewall.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
@@ -383,12 +384,39 @@ async function runAgentTask(opts) {
     // 9. execute
     let doneFlag = false;
     let progressed = false; // any state-changing action landed this step
+    const pageMalicious = (prep.securityAlerts || []).some((s) => /INJECTION|ADVERSARIAL|MALICIOUS/i.test(s.type || ""));
     for (const act of v.actions) {
-      if (act.action === "submit" && cfg.confirmBeforeSubmit) {
+      const targetNode = sanitizedNodes.find((n) => n.id === act.targetId)
+        || prep.skeleton.nodes.find((n) => n.id === act.targetId);
+
+      // 9a. ACTION FIREWALL — classify risk before the action touches the page.
+      const fw = classifyAction(act, {
+        targetNode,
+        pageOrigin: (() => { try { return new URL(prep.skeleton.url).origin; } catch { return null; } })(),
+        pageMalicious,
+      });
+      emit({ type: "action-risk", step, action: sanitizeAction(act), risk: fw.risk, decision: fw.decision, reasons: fw.reasons, exfil: fw.exfil ? { channel: fw.exfil.channel, categories: fw.exfil.categories } : null });
+      if (fw.decision === "BLOCK") {
+        emit({ type: "error", step, where: "action firewall", retryable: false,
+               message: `BLOCKED (${fw.risk}): ${fw.reasons.join("; ")}` });
+        history.push({ step, action: sanitizeAction(act), error: `action firewall blocked: ${fw.risk}` });
+        if (fw.exfil) { stop(step, "data-exfiltration attempt blocked"); doneFlag = true; }
+        continue;
+      }
+      if (fw.decision === "REQUIRE_APPROVAL") {
+        const ok = await waitForGate(`approve-action-${step}-${act.targetId || act.action}`, "approval", {
+          title: `The agent wants to ${describeAction(act, targetNode)}`,
+          risk: fw.risk,
+          reasons: fw.reasons,
+          counts: fw.exfil ? Object.fromEntries((fw.exfil.categories || []).map((c) => [c, 1])) : {},
+          destination: targetNode?.formOrigin || targetNode?.href || null,
+        });
+        if (!ok) { emit({ type: "action", step, action: act, result: { ok: false, note: "not approved by user" } }); continue; }
+      }
+      if (act.action === "submit" && cfg.confirmBeforeSubmit && fw.decision !== "REQUIRE_APPROVAL") {
         const ok = await waitForGate(`submit-${step}`, "submit");
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }
-      const targetNode = sanitizedNodes.find((n) => n.id === act.targetId);
       if (targetNode?.isCensored && !targetNode?.hasFill && !targetNode?.fillToken) {
         emit({ type: "error", step, message: `Action blocked on censored node ${act.targetId}: no local profile data to fill` });
         continue;
@@ -440,6 +468,17 @@ async function runAgentTask(opts) {
 
 // strip any PII-related data from action for history
 const sanitizeAction = (a) => ({ action: a.action, targetId: a.targetId, piiCategory: a.piiCategory, hadLiteral: a.literalValue != null });
+
+// short human phrase for the approval gate — no raw values
+function describeAction(a, node) {
+  const what = (node?.text || node?.label || node?.name || a.targetId || "").toString().slice(0, 40);
+  switch (a.action) {
+    case "submit": return `submit the form${what ? ` (${what})` : ""}`;
+    case "click": return node?.href ? `open ${(() => { try { return new URL(node.href).host; } catch { return "a link"; } })()}` : `click "${what}"`;
+    case "type": case "select": return `fill the ${node?.piiCategory || what || "field"}`;
+    default: return `${a.action} ${what}`.trim();
+  }
+}
 
 // ---- message routing -------------------------------------------------
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
