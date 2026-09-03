@@ -38,7 +38,7 @@
 
 ---
 ## Screenshots
-![alt text](image.png)
+![alt text](ss.png)
 ---
 
 ## 🚀 Quick Start
