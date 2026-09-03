@@ -84,11 +84,7 @@ const PERSONAL_CATS = new Set(["email", "phone-in", "dob", "name", "address"]);
  *   destinationTrust in [0,1]; < 0.5 is "low trust" and tightens the decision.
  */
 export function classifyPayload(payload, ctx = {}) {
-<<<<<<< HEAD
   const { profile = {}, destinationTrust = 1, destination = null, minSecretConfidence = 0.5, pageThreats = [] } = ctx;
-=======
-  const { profile = {}, destinationTrust = 1, destination = null, minSecretConfidence = 0.5 } = ctx;
->>>>>>> 5373796 (security(S1): secret scanner + SecurityPolicyEngine + canary mode)
   const isStr = typeof payload === "string";
   const sanitized = isStr ? { _: payload } : JSON.parse(JSON.stringify(payload));
   const findings = [];
@@ -132,7 +128,6 @@ export function classifyPayload(payload, ctx = {}) {
     if (repl !== value) setByPath(sanitized, path, repl);
   }
 
-<<<<<<< HEAD
   // page-level prompt-injection context (from adversarial-guard classifyContent).
   // The page is actively trying to manipulate the agent — the VLM must not be
   // fed its instructions, and the send needs the user's eyes.
@@ -145,8 +140,6 @@ export function classifyPayload(payload, ctx = {}) {
     }
   }
 
-=======
->>>>>>> 5373796 (security(S1): secret scanner + SecurityPolicyEngine + canary mode)
   return decide({ findings, classification, sanitized: isStr ? sanitized._ : sanitized, destinationTrust, destination });
 }
 
@@ -160,10 +153,7 @@ function decide(s) {
   if (has((f) => f.type === "canary")) { decision = "BLOCK"; reasons.push("canary token in payload"); }
   else if (has((f) => f.type === "secret" && f.action === "block")) { decision = "BLOCK"; reasons.push(`credential material detected (${uniq(findings.filter((f) => f.type === "secret").map((f) => f.subtype)).join(", ")})`); }
   else if (has((f) => f.type === "pii" && f.action === "block")) { decision = "BLOCK"; reasons.push(`restricted PII: ${uniq(findings.filter((f) => f.action === "block" && f.type === "pii").map((f) => f.category)).join(", ")}`); }
-<<<<<<< HEAD
   else if (has((f) => f.type === "prompt_injection" && f.action === "require_approval")) { decision = "REQUIRE_APPROVAL"; reasons.push(`page contains agent-directed instructions (prompt injection: ${uniq(findings.filter((f) => f.type === "prompt_injection").map((f) => f.subtype)).join("; ")})`); }
-=======
->>>>>>> 5373796 (security(S1): secret scanner + SecurityPolicyEngine + canary mode)
   else if (has((f) => f.type === "secret" && f.action === "require_approval")) { decision = "REQUIRE_APPROVAL"; reasons.push("possible credential material — needs review"); }
   else if (destinationTrust < 0.5 && SEVERITY[classification] >= SEVERITY.PERSONAL) { decision = "REQUIRE_APPROVAL"; reasons.push(`personal data to a low-trust destination${destination ? ` (${destination})` : ""}`); }
   else if (findings.length) { decision = "SANITIZE"; reasons.push(`PII redacted: ${uniq(findings.filter((f) => f.type === "pii").map((f) => f.category)).join(", ")}`); }
