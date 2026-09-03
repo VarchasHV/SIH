@@ -17,6 +17,8 @@ import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensit
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
 import { assertNoSensitivePayload } from "./lib/egress-guard.mjs";
+import { enforceEgressPolicy } from "./lib/security-policy.mjs";
+import { classifyAction } from "./lib/action-firewall.mjs";
 
 const isChromeOffscreenSupported = typeof chrome !== "undefined" &&
   typeof chrome.offscreen !== "undefined" &&
