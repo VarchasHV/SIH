@@ -28,6 +28,7 @@ const DEFAULTS = {
   serverUrl: "http://localhost:8000",
   redactionMode: "blackout",
   maxSteps: 8,
+  autoApprove: false,
   confirmEachSend: false,
   confirmBeforeSubmit: true,
 };
@@ -329,7 +330,7 @@ async function runAgentTask(opts) {
       history.push({ step, error: `egress blocked: ${gate.result.classification}` });
       break;
     }
-    if (gate.needsApproval) {
+    if (gate.needsApproval && !cfg.autoApprove) {
       const ok = await waitForGate(`approve-egress-${step}`, "approval", {
         title: "Send this context to the AI?",
         risk: gate.result.classification,
@@ -360,7 +361,7 @@ async function runAgentTask(opts) {
     });
 
     // 6. optional human gate before the network call
-    if (cfg.confirmEachSend) {
+    if (cfg.confirmEachSend && !cfg.autoApprove) {
       const ok = await waitForGate(`send-${step}`, "send");
       if (!ok) { emit({ type: "cancelled", step }); break; }
     }
@@ -423,7 +424,7 @@ async function runAgentTask(opts) {
         if (fw.exfil) { stop(step, "data-exfiltration attempt blocked"); doneFlag = true; }
         continue;
       }
-      if (fw.decision === "REQUIRE_APPROVAL") {
+      if (fw.decision === "REQUIRE_APPROVAL" && !cfg.autoApprove) {
         const ok = await waitForGate(`approve-action-${step}-${act.targetId || act.action}`, "approval", {
           title: `The agent wants to ${describeAction(act, targetNode)}`,
           risk: fw.risk,
@@ -433,7 +434,7 @@ async function runAgentTask(opts) {
         });
         if (!ok) { emit({ type: "action", step, action: act, result: { ok: false, note: "not approved by user" } }); continue; }
       }
-      if (act.action === "submit" && cfg.confirmBeforeSubmit && fw.decision !== "REQUIRE_APPROVAL") {
+      if (act.action === "submit" && cfg.confirmBeforeSubmit && !cfg.autoApprove && fw.decision !== "REQUIRE_APPROVAL") {
         const ok = await waitForGate(`submit-${step}`, "submit");
         if (!ok) { emit({ type: "submit-skipped", step }); doneFlag = true; break; }
       }

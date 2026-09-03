@@ -117,8 +117,8 @@ function setGoalMode(mode) {
   guidedWrap.hidden = mode !== "guided";
   customWrap.hidden = mode !== "custom";
 }
-modeGuidedBtn.addEventListener("click", () => setGoalMode("guided"));
-modeCustomBtn.addEventListener("click", () => setGoalMode("custom"));
+modeGuidedBtn.addEventListener("click", () => { setGoalMode("guided"); saveSettings(); });
+modeCustomBtn.addEventListener("click", () => { setGoalMode("custom"); saveSettings(); });
 
 // field chips come from the same non-sensitive profile keys
 const gbFieldList = $("#gb-field-list");
@@ -412,13 +412,53 @@ function startTask(opts) {
   });
 }
 
+// ---- settings persistence --------------------------------
+async function loadSettings() {
+  const { settings = {} } = await chrome.storage.local.get("settings");
+  if (settings.serverUrl !== undefined && $("#serverUrl")) $("#serverUrl").value = settings.serverUrl;
+  if (settings.redactionMode !== undefined && $("#redactionMode")) $("#redactionMode").value = settings.redactionMode;
+  if (settings.autoApprove !== undefined && $("#autoApprove")) $("#autoApprove").checked = Boolean(settings.autoApprove);
+  if (settings.confirmEachSend !== undefined && $("#confirmEachSend")) $("#confirmEachSend").checked = Boolean(settings.confirmEachSend);
+  if (settings.confirmBeforeSubmit !== undefined && $("#confirmBeforeSubmit")) $("#confirmBeforeSubmit").checked = Boolean(settings.confirmBeforeSubmit);
+  if (settings.goalMode && (settings.goalMode === "guided" || settings.goalMode === "custom")) {
+    setGoalMode(settings.goalMode);
+  }
+  if (settings.goal !== undefined && $("#goal")) $("#goal").value = settings.goal;
+  refreshAiStatus();
+}
+
+async function saveSettings() {
+  const settings = {
+    serverUrl: $("#serverUrl")?.value.trim() || "http://localhost:8000",
+    redactionMode: $("#redactionMode")?.value || "blackout",
+    autoApprove: Boolean($("#autoApprove")?.checked),
+    confirmEachSend: Boolean($("#confirmEachSend")?.checked),
+    confirmBeforeSubmit: Boolean($("#confirmBeforeSubmit")?.checked),
+    goalMode: goalMode,
+    goal: $("#goal")?.value || "",
+  };
+  await chrome.storage.local.set({ settings });
+}
+
+["#serverUrl", "#redactionMode", "#autoApprove", "#confirmEachSend", "#confirmBeforeSubmit", "#goal"].forEach((sel) => {
+  const el = $(sel);
+  if (el) {
+    el.addEventListener("change", saveSettings);
+    if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
+      el.addEventListener("input", saveSettings);
+    }
+  }
+});
+
 $("#run-button").addEventListener("click", () => {
   const goal = goalMode === "guided" ? composeGuidedGoal() : $("#goal").value.trim();
   if (!goal) { $("#goal").focus(); return; }
+  saveSettings();
   startTask({
     goal,
     serverUrl: $("#serverUrl").value.trim() || "http://localhost:8000",
-    redactionMode: "blackout",
+    redactionMode: $("#redactionMode")?.value || "blackout",
+    autoApprove: $("#autoApprove")?.checked ?? false,
     confirmEachSend: $("#confirmEachSend").checked,
     confirmBeforeSubmit: $("#confirmBeforeSubmit").checked,
   });
@@ -475,3 +515,4 @@ $("#scan-button").addEventListener("click", () => {
 });
 
 loadProfile();
+loadSettings();
