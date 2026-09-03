@@ -20,6 +20,18 @@ import {
   genSSN,
   genInvalidSSN,
   genIPv4,
+  genIBAN,
+  genIBANBadChecksum,
+  ibanChecksumValid,
+  genBtcLegacy,
+  genBtcLegacyBad,
+  genBtcBech32,
+  genBtcBech32Bad,
+  base58CheckValid,
+  bech32CheckValid,
+  genNINo,
+  genNINoBad,
+  ninoStructValid,
 } from "../eval/bench/lib/independent-validators.mjs";
 
 // The detector under test — imported HERE (in the test), never in the generator.
@@ -154,6 +166,49 @@ test("generated valid cards are detected by the real detector (with a keyword)",
     if (found) hit++;
   }
   assert.ok(hit / N > 0.95, `only ${hit}/${N} detected`);
+});
+
+// ── Phase 3: crypto / IBAN / NINo generators ────────────────────────────
+
+test("Phase 3: independent crypto validators use a SEPARATE sha256 (node:crypto)", () => {
+  // BIP-173 vector, checked by the eval-side implementation only.
+  assert.equal(bech32CheckValid("bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"), true);
+  assert.equal(base58CheckValid("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"), true);
+  assert.equal(ibanChecksumValid("GB82WEST12345698765432"), true);
+});
+
+test("genIBAN / genBtc* / genNINo: 2000 samples each valid, bad variants invalid", () => {
+  const rng = makeRng(20260903);
+  for (let i = 0; i < 2000; i++) {
+    assert.equal(ibanChecksumValid(genIBAN(rng)), true);
+    assert.equal(ibanChecksumValid(genIBANBadChecksum(rng)), false);
+    assert.equal(base58CheckValid(genBtcLegacy(rng)), true);
+    assert.equal(base58CheckValid(genBtcLegacyBad(rng)), false);
+    assert.equal(bech32CheckValid(genBtcBech32(rng)), true);
+    assert.equal(bech32CheckValid(genBtcBech32Bad(rng)), false);
+    assert.equal(ninoStructValid(genNINo(rng)), true);
+    assert.equal(ninoStructValid(genNINoBad(rng)), false);
+  }
+});
+
+test("generated crypto/IBAN positives are detected by the real detector (keyworded)", () => {
+  const rng = makeRng(20260903);
+  let iban = 0, btc = 0;
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    if (detectPII(`transfer to IBAN ${genIBAN(rng)}`).some((h) => h.category === "iban")) iban++;
+    if (detectPII(`send bitcoin ${genBtcBech32(rng)}`).some((h) => h.category === "btc-address")) btc++;
+  }
+  assert.ok(iban / N > 0.98, `iban ${iban}/${N}`);
+  assert.ok(btc / N > 0.98, `btc ${btc}/${N}`);
+});
+
+test("bad-checksum IBAN / BTC are NOT detected by the real detector", () => {
+  const rng = makeRng(7);
+  for (let i = 0; i < 300; i++) {
+    assert.equal(detectPII(`IBAN ${genIBANBadChecksum(rng)}`).some((h) => h.category === "iban"), false);
+    assert.equal(detectPII(`wallet ${genBtcLegacyBad(rng)}`).some((h) => h.category === "btc-address"), false);
+  }
 });
 
 test("IPv4 addresses are NOT detected as Aadhaar by the real detector", () => {
