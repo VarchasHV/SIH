@@ -37,11 +37,9 @@
 [ Extension Action Firewall ] ──( User Approval & Safe DOM Execution )
 ```
 
-1. **Scan & Redact**: When you activate the agent, the browser extension captures the viewport, identifies sensitive elements via DOM analysis and on-device machine learning, and redacts them directly on an in-memory canvas.
-2. **Verify**: A verification pass ensures that no sensitive text or recognizable faces remain visible in the redacted image.
-3. **Plan**: The redacted visual and anonymized DOM skeleton are transmitted to the backend VLM to determine the next form-filling actions.
-4. **Execute Safely**: The agent firewall inspects and validates the proposed actions before typing or clicking in the browser.
-
+---
+## Screenshots
+![alt text](image-1.png)
 ---
 
 ## 🚀 Quick Start
@@ -50,7 +48,6 @@
 - Python 3.10+
 - Node.js 18+
 
----
 
 ### 1. Start the Backend Server
 
