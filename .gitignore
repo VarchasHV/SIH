@@ -27,5 +27,6 @@ eval/bench/corpus-*.redaction.*
 
 # Misc
 *.local
-
+GEMINI.md
+AGENTS.md
 .env
