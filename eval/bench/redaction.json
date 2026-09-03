@@ -7,8 +7,8 @@
     "verifyPiiConf": 0.3,
     "verifySecretConf": 0.5,
     "environment": {
-      "timestamp": "2026-09-03T08:57:42.490Z",
-      "gitCommit": "8b0730a",
+      "timestamp": "2026-09-03T08:59:46.785Z",
+      "gitCommit": "a642a94",
       "gitBranch": "working",
       "gitDirty": true,
       "nodeVersion": "v24.16.0",
@@ -22,6 +22,92 @@
     }
   },
   "rows": [
+    {
+      "id": "baseline-old",
+      "name": "baseline (pre-fix)",
+      "goldChars": 109654,
+      "goldSpans": 6835,
+      "leakageRate": 0.6674539916464516,
+      "fullyRedactedRate": 0.4216532553035845,
+      "partialLeakRate": 0.5783467446964156,
+      "overRedactionRate": 0.3162000487557898,
+      "charIoU": 0.28822441430332923,
+      "maskedChars": 53327,
+      "leakageByClass": {
+        "other": {
+          "leakageRate": 0,
+          "goldChars": 0
+        },
+        "A-contextual": {
+          "leakageRate": 0.7357696538668167,
+          "goldChars": 78178
+        },
+        "ocr-garbled": {
+          "leakageRate": 0.8894352346164653,
+          "goldChars": 7118
+        },
+        "composite": {
+          "leakageRate": 0.19913875598086125,
+          "goldChars": 10450
+        },
+        "B-unlabelled": {
+          "leakageRate": 0.568295739348371,
+          "goldChars": 12768
+        },
+        "regression": {
+          "leakageRate": 0,
+          "goldChars": 1140
+        }
+      },
+      "leakageBySurfaceForm": {
+        "ascii": {
+          "leakageRate": 0.49270472505885704,
+          "goldChars": 66687
+        },
+        "zwsp": {
+          "leakageRate": 1,
+          "goldChars": 7124
+        },
+        "endash": {
+          "leakageRate": 1,
+          "goldChars": 5241
+        },
+        "pers": {
+          "leakageRate": 1,
+          "goldChars": 4268
+        },
+        "arab": {
+          "leakageRate": 1,
+          "goldChars": 4310
+        },
+        "ocr": {
+          "leakageRate": 0.8894352346164653,
+          "goldChars": 7118
+        },
+        "fullwidth": {
+          "leakageRate": 1,
+          "goldChars": 4260
+        },
+        "nbsp": {
+          "leakageRate": 0.6509255761239139,
+          "goldChars": 5294
+        },
+        "deva": {
+          "leakageRate": 1,
+          "goldChars": 5352
+        }
+      },
+      "msPerSample": 0.002,
+      "verification": {
+        "rawLeakageRate": 0.6674539916464516,
+        "verifyBestEffortLeakageRate": 0.07046710562314189,
+        "verifyGatedLeakageInSent": 0,
+        "blockedSampleRate": 0.055130784708249496,
+        "blockedGoldCharRate": 0.07152497856895325,
+        "blockedSpans": 548,
+        "verifyOverRedactionRate": 0.30284397143716996
+      }
+    },
     {
       "id": "current",
       "name": "current (regex+checksum)",
@@ -97,7 +183,7 @@
           "goldChars": 5352
         }
       },
-      "msPerSample": 0.006,
+      "msPerSample": 0.005,
       "verification": {
         "rawLeakageRate": 0.14373392671493973,
         "verifyBestEffortLeakageRate": 0.07276524340197348,
@@ -106,6 +192,92 @@
         "blockedGoldCharRate": 0.07569263319167563,
         "blockedSpans": 576,
         "verifyOverRedactionRate": 0.25057676290437897
+      }
+    },
+    {
+      "id": "naive-regex",
+      "name": "naive regex (no checksum)",
+      "goldChars": 109654,
+      "goldSpans": 6835,
+      "leakageRate": 0.6602951100735039,
+      "fullyRedactedRate": 0.4156547183613753,
+      "partialLeakRate": 0.5843452816386248,
+      "overRedactionRate": 0.3607125695064186,
+      "charIoU": 0.28506489531039547,
+      "maskedChars": 58268,
+      "leakageByClass": {
+        "other": {
+          "leakageRate": 0,
+          "goldChars": 0
+        },
+        "A-contextual": {
+          "leakageRate": 0.749520325411241,
+          "goldChars": 78178
+        },
+        "ocr-garbled": {
+          "leakageRate": 0.8905591458274796,
+          "goldChars": 7118
+        },
+        "composite": {
+          "leakageRate": 0.019138755980861243,
+          "goldChars": 10450
+        },
+        "B-unlabelled": {
+          "leakageRate": 0.5693139097744361,
+          "goldChars": 12768
+        },
+        "regression": {
+          "leakageRate": 0,
+          "goldChars": 1140
+        }
+      },
+      "leakageBySurfaceForm": {
+        "ascii": {
+          "leakageRate": 0.4531018039497953,
+          "goldChars": 66687
+        },
+        "zwsp": {
+          "leakageRate": 1,
+          "goldChars": 7124
+        },
+        "endash": {
+          "leakageRate": 1,
+          "goldChars": 5241
+        },
+        "pers": {
+          "leakageRate": 1,
+          "goldChars": 4268
+        },
+        "arab": {
+          "leakageRate": 1,
+          "goldChars": 4310
+        },
+        "ocr": {
+          "leakageRate": 0.8905591458274796,
+          "goldChars": 7118
+        },
+        "fullwidth": {
+          "leakageRate": 1,
+          "goldChars": 4260
+        },
+        "nbsp": {
+          "leakageRate": 1,
+          "goldChars": 5294
+        },
+        "deva": {
+          "leakageRate": 1,
+          "goldChars": 5352
+        }
+      },
+      "msPerSample": 0.001,
+      "verification": {
+        "rawLeakageRate": 0.6602951100735039,
+        "verifyBestEffortLeakageRate": 0.0702391157641308,
+        "verifyGatedLeakageInSent": 0,
+        "blockedSampleRate": 0.055533199195171024,
+        "blockedGoldCharRate": 0.07206303463621938,
+        "blockedSpans": 552,
+        "verifyOverRedactionRate": 0.3119626395281351
       }
     }
   ]

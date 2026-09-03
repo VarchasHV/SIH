@@ -6,17 +6,19 @@ Scored against **ground-truth** spans: a missed span leaks 100%, an IoU-0.5 hit 
 
 | Detector | Leakage rate ↓ | Fully redacted ↑ | Partial-leak spans ↓ | Over-redaction ↓ | char IoU ↑ | ms/sample |
 |---|--:|--:|--:|--:|--:|--:|
-| current (regex+checksum) | **14.4%** | 82.6% | 17.4% | 0.3% | 85.4% | 0.006 |
+| current (regex+checksum) | **14.4%** | 82.6% | 17.4% | 0.3% | 85.4% | 0.005 |
+| naive regex (no checksum) | **66.0%** | 41.6% | 58.4% | 36.1% | 28.5% | 0.001 |
+| baseline (pre-fix) | **66.7%** | 42.2% | 57.8% | 31.6% | 28.8% | 0.002 |
 
 ## Leakage by class — where the leaked characters come from
 
-| Class | current (regex+checksum) |
-|---|--:|
-| A-contextual | 6.3% (chars=78178) |
-| B-unlabelled | 35.7% (chars=12768) |
-| ocr-garbled | 85.3% (chars=7118) |
-| composite | 1.5% (chars=10450) |
-| regression | 1.7% (chars=1140) |
+| Class | baseline (pre-fix) | current (regex+checksum) | naive regex (no checksum) |
+|---|--:|--:|--:|
+| A-contextual | 73.6% (chars=78178) | 6.3% (chars=78178) | 75.0% (chars=78178) |
+| B-unlabelled | 56.8% (chars=12768) | 35.7% (chars=12768) | 56.9% (chars=12768) |
+| ocr-garbled | 88.9% (chars=7118) | 85.3% (chars=7118) | 89.1% (chars=7118) |
+| composite | 19.9% (chars=10450) | 1.5% (chars=10450) | 1.9% (chars=10450) |
+| regression | 0.0% (chars=1140) | 1.7% (chars=1140) | 0.0% (chars=1140) |
 
 ## Post-verification (redaction-verify.mjs re-OCR gate — S4/11)
 
@@ -25,6 +27,8 @@ The verify pass re-scans the masked image at a paranoid threshold (PII ≥ 0.3, 
 | Detector | Raw leakage | Verify best-effort¹ | Verify gated: in sent² | Verify gated: blocked³ |
 |---|--:|--:|--:|--:|
 | current (regex+checksum) | 14.4% | 7.3% | **0.0%** | 5.7% samples · 7.6% of gold chars |
+| naive regex (no checksum) | 66.0% | 7.0% | **0.0%** | 5.6% samples · 7.2% of gold chars |
+| baseline (pre-fix) | 66.7% | 7.0% | **0.0%** | 5.5% samples · 7.2% of gold chars |
 
 ¹ apply the verify masks but send the image anyway (no blocking).
 ² leakage among images that **were** sent — the gate blocked the rest.
