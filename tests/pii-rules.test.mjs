@@ -171,3 +171,42 @@ test("returns [] for empty / non-string", () => {
   assert.deepEqual(detectPII(""), []);
   assert.deepEqual(detectPII(null), []);
 });
+
+// ---- Phase 3: curated additions (config-driven) --------------------
+test("Phase 3: IBAN — mod-97 checksum gates the match", () => {
+  assert.ok(has("wire to IBAN GB82WEST12345698765432", "iban"));
+  assert.ok(has("DE89 3704 0044 0532 0130 00", "iban"), "grouped, no keyword");
+  assert.equal(has("ref GB82WEST12345698765433 in the manifest", "iban"), false); // bad checksum
+});
+
+test("Phase 3: Bitcoin — base58check / bech32 checksum; unambiguous so no keyword needed", () => {
+  assert.ok(has("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa", "btc-address"));
+  assert.ok(has("pay bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", "btc-address"));
+  assert.equal(has("token 1A1zP1eP5QGefi2DMPTfTL5SLmv7Divfna emitted", "btc-address"), false); // checksum fail
+});
+
+test("Phase 3: Ethereum — hard context gate (no keccak checksum path)", () => {
+  assert.ok(has("send it to wallet 0x52908400098527886E0F7030069857D2E4169EE7", "eth-address"));
+  assert.equal(has("stack frame 0x52908400098527886e0f7030069857d2e4169ee7 hit", "eth-address"), false);
+  assert.ok(has("0x52908400098527886e0f7030069857d2e4169ee7", "eth-address", { minConfidence: 0 }));
+});
+
+test("Phase 3: UK National Insurance number — keyword required, prefix rules enforced", () => {
+  assert.ok(has("National Insurance No AB123456C", "uk-nino"));
+  assert.equal(has("coupon AB123456C redeemed", "uk-nino"), false);
+  assert.equal(has("NI number ZZ123456C", "uk-nino"), false); // disallowed prefix
+});
+
+test("Phase 3: additions stay silent on code / logs / UI chrome", () => {
+  for (const t of [
+    "curl -H 'Authorization: Bearer abc' https://api.host/v1",
+    "at processTicksAndRejections (node:internal/process/task_queues:95:5)",
+    "File   Edit   View   Run   Terminal   Help",
+    "commit 8b0730a docs: mark security plan item 11 done",
+  ]) {
+    const cats = detectPII(t).map((h) => h.category);
+    for (const c of ["iban", "btc-address", "eth-address", "uk-nino"]) {
+      assert.equal(cats.includes(c), false, `${c} on "${t}"`);
+    }
+  }
+});

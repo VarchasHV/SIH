@@ -1,6 +1,6 @@
 # PII Detection Benchmark
 
-**Corpus**: 8500 samples · 6037 gold spans · 5560 positive / 2940 negative lines
+**Corpus**: 9940 samples · 6835 gold spans · 6360 positive / 3580 negative lines
 **Generated**: 2026-09-03 · seeded, reproducible via `node eval/bench/gen-corpus.mjs`
 
 Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro-averaged.
@@ -11,19 +11,19 @@ Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro
 
 | Detector | Kind | Precision | Recall | F1 | Line acc. | ms/sample |
 |---|---|--:|--:|--:|--:|--:|
-| current (regex+checksum) | on-device / rules | 99.2% | 84.1% | **91.0%** | 88.8% | 0 |
+| current (regex+checksum) | on-device / rules | 99.4% | 84.1% | **91.1%** | 89.1% | 0.01 |
 
 ## Phase 4 — results by class (A/B/C/D reported separately)
 
 | Class | Metric | current (regex+checksum) |
 |---|---|--:|
-| A · contextual positive (keyworded) | recall | 93.8% (n=4099) |
-| B · unlabelled positive (no keyword) | recall | 57.1% (n=559) |
-| C · structured-identifier positive | recall | 86.2% (n=3706) |
-| D · adversarial negative (same shape, not PII) | false-positive rate | 0.8% (19/2240) |
+| A · contextual positive (keyworded) | recall | 93.5% (n=4731) |
+| B · unlabelled positive (no keyword) | recall | 56.3% (n=727) |
+| C · structured-identifier positive | recall | 87.4% (n=4110) |
+| D · adversarial negative (same shape, not PII) | false-positive rate | 0.7% (20/2880) |
 | clean negative (safe prose) | false-positive rate | 0.0% (0/700) |
-| OCR-garbled positive | recall | 16.1% (n=542) |
-| multi-PII sentence | recall | 98.6% (n=777) |
+| OCR-garbled positive | recall | 16.2% (n=542) |
+| multi-PII sentence | recall | 98.7% (n=775) |
 | aadhaar-substring regression | recall | 98.3% (n=60) |
 
 **A vs B is the whole story of a context-gated detector.** B (unlabelled) recall being lower than A (contextual) is by design — bare shape-only IDs are dropped to keep precision high on class D.
@@ -32,45 +32,53 @@ Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro
 
 | Category | current (regex+checksum) |
 |---|--:|
-| `aadhaar` | 93.2% |
-| `pan` | 97.3% |
+| `aadhaar` | 93.4% |
+| `pan` | 97.0% |
 | `gstin` | 92.8% |
 | `ifsc` | 97.7% |
 | `upi-vpa` | 100.0% |
 | `voter-id` | 85.1% |
 | `vehicle-reg` | 92.3% |
-| `passport-in` | 85.0% |
-| `credit-card` | 90.0% |
-| `phone-in` | 84.4% |
+| `passport-in` | 85.7% |
+| `credit-card` | 89.5% |
+| `phone-in` | 83.3% |
 | `ssn` | 83.7% |
 | `ipv4` | 87.0% |
-| `dob` | 89.8% |
+| `dob` | 90.1% |
 | `email` | 100.0% |
+| `iban` | 100.0% |
+| `btc-address` | 100.0% |
+| `eth-address` | 81.7% |
+| `uk-nino` | 88.3% |
 
 ## Per-category recall (did it catch the PII?)
 
 | Category | current (regex+checksum) |
 |---|--:|
 | `aadhaar` | 89.7% |
-| `pan` | 94.7% |
+| `pan` | 94.3% |
 | `gstin` | 86.5% |
-| `ifsc` | 95.6% |
+| `ifsc` | 95.4% |
 | `upi-vpa` | 100.0% |
 | `voter-id` | 74.0% |
 | `vehicle-reg` | 86.5% |
-| `passport-in` | 73.9% |
-| `credit-card` | 81.9% |
-| `phone-in` | 73.5% |
+| `passport-in` | 74.9% |
+| `credit-card` | 81.2% |
+| `phone-in` | 71.8% |
 | `ssn` | 72.0% |
 | `ipv4` | 77.0% |
-| `dob` | 81.4% |
+| `dob` | 82.0% |
 | `email` | 100.0% |
+| `iban` | 100.0% |
+| `btc-address` | 100.0% |
+| `eth-address` | 69.0% |
+| `uk-nino` | 79.0% |
 
 ## Per-category precision (of what it flagged, how much was right?)
 
 | Category | current (regex+checksum) |
 |---|--:|
-| `aadhaar` | 97.1% |
+| `aadhaar` | 97.4% |
 | `pan` | 100.0% |
 | `gstin` | 100.0% |
 | `ifsc` | 100.0% |
@@ -84,6 +92,10 @@ Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro
 | `ipv4` | 100.0% |
 | `dob` | 100.0% |
 | `email` | 100.0% |
+| `iban` | 100.0% |
+| `btc-address` | 100.0% |
+| `eth-address` | 100.0% |
+| `uk-nino` | 100.0% |
 
 ## Recall by context (span-level)
 
@@ -91,10 +103,10 @@ Context-gated categories deliberately miss *bare* shape-only IDs (voter-id, pass
 
 | Context | current (regex+checksum) |
 |---|--:|
-| keyworded | 93.8% (n=4099) |
-| bare (no keyword) | 57.1% (n=559) |
-| ocr-garbled | 16.1% (n=542) |
-| composite | 98.6% (n=777) |
+| keyworded | 93.5% (n=4731) |
+| bare (no keyword) | 56.3% (n=727) |
+| ocr-garbled | 16.2% (n=542) |
+| composite | 98.7% (n=775) |
 | aadhaar-substring-regression | 98.3% (n=60) |
 
 ## Phase 6 — recall by surface form (Unicode / OCR robustness)
@@ -103,15 +115,15 @@ Preprocessing is a real, separate pipeline stage — it must not be silently cre
 
 | Surface form | current (regex+checksum) |
 |---|--:|
-| ASCII (plain / space / hyphen / dot) | 91.0% (n=3183) |
-| Arabic-Indic digits | 90.3% (n=300) |
-| Persian digits | 91.3% (n=300) |
-| Devanagari digits | 89.6% (n=375) |
-| fullwidth digits | 90.7% (n=300) |
-| non-breaking space sep | 88.9% (n=370) |
-| en-dash sep | 92.1% (n=367) |
-| zero-width space between digits | 91.3% (n=300) |
-| OCR char-confusion (O↔0, l↔1, S↔5…) | 16.1% (n=542) |
+| ASCII (plain / space / hyphen / dot) | 90.2% (n=3981) |
+| Arabic-Indic digits | 90.0% (n=300) |
+| Persian digits | 89.3% (n=300) |
+| Devanagari digits | 87.2% (n=375) |
+| fullwidth digits | 89.7% (n=300) |
+| non-breaking space sep | 90.5% (n=370) |
+| en-dash sep | 89.1% (n=367) |
+| zero-width space between digits | 90.3% (n=300) |
+| OCR char-confusion (O↔0, l↔1, S↔5…) | 16.2% (n=542) |
 
 OCR-confusion recall is low for every detector — a corrupted digit breaks the checksum, and `normalize()` cannot recover it. That is a genuine limitation of a screenshot-reading pipeline and is reported, not hidden.
 

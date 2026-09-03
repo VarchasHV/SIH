@@ -25,7 +25,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 // Phase 2: ground truth is validated with the INDEPENDENT implementation, never
 // the detector under test (client/lib/pii-rules.mjs).
-import { isValidVerhoeff as verhoeffValid, isValidLuhn as luhnValid } from "./lib/independent-validators.mjs";
+import {
+  isValidVerhoeff as verhoeffValid, isValidLuhn as luhnValid,
+  genIBAN, genIBANBadChecksum,
+  genBtcLegacy, genBtcLegacyBad, genBtcBech32, genBtcBech32Bad,
+  genEthAddress, genNINo, genNINoBad,
+} from "./lib/independent-validators.mjs";
 
 // ---- args ------------------------------------------------------------
 const arg = (k, d) => {
@@ -51,7 +56,7 @@ const OUT = arg("out", null)
   ? (arg("out").startsWith("/") ? arg("out") : join(process.cwd(), arg("out")))
   : join(dirname(fileURLToPath(import.meta.url)), "corpus.jsonl");
 const MANIFEST = OUT.replace(/\.jsonl$/, "") + ".manifest.json";
-const CORPUS_VERSION = 2; // bump when the generation logic changes
+const CORPUS_VERSION = 3; // bump when the generation logic changes (3: Phase 3 crypto/IBAN/NINo)
 
 // ---- seeded PRNG ----------------------------------------------------
 function mulberry32(seed) {
@@ -209,6 +214,10 @@ const KW = {
   ipv4: ["server IP {v} responded", "whitelist the IP address {v}", "host {v} is unreachable"],
   dob: ["born on {v} in Pune", "DOB {v}", "date of birth: {v}", "d.o.b {v}"],
   email: ["write to {v}", "email: {v}", "contact e-mail {v}"],
+  iban: ["transfer to IBAN {v}", "beneficiary IBAN: {v}", "wire the funds to {v}", "our account IBAN {v}", "SWIFT payment to IBAN {v}"],
+  "btc-address": ["send BTC to {v}", "bitcoin address: {v}", "donate to {v}", "wallet {v} on-chain", "pay {v} in sats"],
+  "eth-address": ["send ETH to wallet {v}", "my Ethereum address is {v}", "airdrop to {v}", "the contract owner {v}", "0x wallet {v}"],
+  "uk-nino": ["National Insurance number {v}", "NI No: {v}", "NINO {v} on the P60", "HMRC record for NI {v}"],
 };
 // keyword-FREE — the value dropped into neutral prose (tests recall of context gates)
 const NOKW = ["Here it is: {v}", "Noted — {v} — thanks.", "{v}", "reference {v} for later", "see {v} below", "({v})", "value {v}"];
@@ -237,6 +246,25 @@ function negFor(cat) {
     case "ssn": return wrap(ssnShape());
     case "ipv4": return pick(["upgraded to version {v}", "build {v}", "firmware {v}", "running {v} on prod"]).replace("{v}", versionStr());
     case "dob": return pick(["card expires {v}", "meeting on {v}", "deadline {v}", "fiscal year {v}", "due {v}", "released {v}"]).replace("{v}", nonDOBDate());
+    case "iban": return chance(0.6)
+      ? wrap(genIBANBadChecksum(rnd))                                   // right country+length, mod-97 fails
+      : pick(["ticket {v} escalated", "order {v}", "SKU {v}"]).replace("{v}", "QX" + digits(2) + Ls(4) + digits(3) + L() + digits(4) + L() + digits(5)); // IBAN-ish, unregistered country
+    case "btc-address": return pick([
+      wrap(genBtcLegacyBad(rnd)),                                       // base58 checksum flipped
+      wrap(genBtcBech32Bad(rnd)),                                       // bech32 checksum flipped
+      `object ${Array.from({ length: 40 }, () => "0123456789abcdef"[ri(16)]).join("")} in the pack`,
+      `base64 blob ${Array.from({ length: 44 }, () => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"[ri(64)]).join("")}`,
+    ]);
+    case "eth-address": return pick([
+      `git checkout 0x${Array.from({ length: 40 }, () => "0123456789abcdef"[ri(16)]).join("")}`,   // hex, "git" context
+      `tx hash 0x${Array.from({ length: 64 }, () => "0123456789abcdef"[ri(16)]).join("")} mined`,   // 64 hex — wrong length
+      `commit 0x${Array.from({ length: 40 }, () => "0123456789abcdef"[ri(16)]).join("")} reverted`,
+    ]);
+    case "uk-nino": return pick([
+      wrap(genNINoBad(rnd)),                                            // disallowed prefix
+      "membership card {v} expires 2028".replace("{v}", pick("ABCEGHJ".split("")) + pick("ABCEGHJ".split("")) + digits(6) + pick("ABCD".split(""))),
+      `booking ref ${Ls(2)}${digits(6)}${pick("XYZW".split(""))}`,      // suffix out of A-D
+    ]);
     case "email": return pick(["path is a@b", "see foo@bar in the log", "{v}"]).replace("{v}", pick(["not.an.email@", "@handle", "a@b"]));
     default: return "nothing to see here";
   }
@@ -287,6 +315,12 @@ const ALNUM_GEN = {
   pan: validPAN, gstin: validGSTIN, ifsc: validIFSC, "upi-vpa": validUPI,
   "voter-id": validVoterId, "vehicle-reg": validVehicle, "passport-in": validPassport,
   email: validEmail, ssn: validSSN, ipv4: realIPv4, dob: validDOB,
+  // Phase 3 — crypto / IBAN / NINo. Generators live in independent-validators.mjs
+  // and take a () => [0,1) rng; `rnd` is exactly that and keeps everything seeded.
+  iban: () => (chance(0.5) ? genIBAN(rnd).replace(/(.{4})/g, "$1 ").trim() : genIBAN(rnd)),
+  "btc-address": () => pick([genBtcLegacy(rnd), genBtcBech32(rnd), genBtcBech32(rnd, "v1")]),
+  "eth-address": () => genEthAddress(rnd),
+  "uk-nino": () => genNINo(rnd),
 };
 
 for (const cat of ["aadhaar", "credit-card", "phone-in", ...Object.keys(ALNUM_GEN)]) {

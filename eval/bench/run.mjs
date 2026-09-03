@@ -40,14 +40,19 @@ const ALIAS = {
   "ip address": "ipv4", "ipv4": "ipv4", "ipv4 address": "ipv4", "ip": "ipv4",
   "date of birth": "dob", "dob": "dob", "birth date": "dob", "birthdate": "dob",
   "email address": "email", "email": "email", "e-mail": "email", "email id": "email",
+  // Phase 3 additions
+  "iban": "iban", "international bank account number": "iban",
+  "btc-address": "btc-address", "bitcoin address": "btc-address", "btc": "btc-address",
+  "eth-address": "eth-address", "ethereum address": "eth-address", "eth": "eth-address", "wallet address": "eth-address",
+  "uk-nino": "uk-nino", "national insurance number": "uk-nino", "ni number": "uk-nino", "nino": "uk-nino",
 };
 const norm = (c) => ALIAS[String(c || "").trim().toLowerCase()] || String(c || "").trim().toLowerCase();
 
-const CATS = ["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card", "phone-in", "ssn", "ipv4", "dob", "email"];
+const CATS = ["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card", "phone-in", "ssn", "ipv4", "dob", "email", "iban", "btc-address", "eth-address", "uk-nino"];
 
 // Structured identifiers: a checksum or an authoritative prefix list makes the
 // VALUE itself verifiable (brief's category C).
-const STRUCTURED = new Set(["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card"]);
+const STRUCTURED = new Set(["aadhaar", "pan", "gstin", "ifsc", "upi-vpa", "voter-id", "vehicle-reg", "passport-in", "credit-card", "iban", "btc-address"]);
 
 // Phase 4 — report classes separately so unlabelled-recall (B) is never
 // averaged into contextual-recall (A).

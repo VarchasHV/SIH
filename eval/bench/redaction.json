@@ -7,8 +7,8 @@
     "verifyPiiConf": 0.3,
     "verifySecretConf": 0.5,
     "environment": {
-      "timestamp": "2026-09-03T08:37:27.316Z",
-      "gitCommit": "74d1783",
+      "timestamp": "2026-09-03T08:57:42.490Z",
+      "gitCommit": "8b0730a",
       "gitBranch": "working",
       "gitDirty": true,
       "nodeVersion": "v24.16.0",
@@ -25,87 +25,87 @@
     {
       "id": "current",
       "name": "current (regex+checksum)",
-      "goldChars": 83625,
-      "goldSpans": 6037,
-      "leakageRate": 0.1472526158445441,
-      "fullyRedactedRate": 0.8235878747722378,
-      "partialLeakRate": 0.17641212522776215,
-      "overRedactionRate": 0.0032428050263477908,
-      "charIoU": 0.8503881607975482,
-      "maskedChars": 71543,
+      "goldChars": 109654,
+      "goldSpans": 6835,
+      "leakageRate": 0.14373392671493973,
+      "fullyRedactedRate": 0.8257498171177762,
+      "partialLeakRate": 0.17425018288222385,
+      "overRedactionRate": 0.002560180168695689,
+      "charIoU": 0.8543882797215524,
+      "maskedChars": 94134,
       "leakageByClass": {
-        "A-contextual": {
-          "leakageRate": 0.060432624971901855,
-          "goldChars": 57833
-        },
         "other": {
           "leakageRate": 0,
           "goldChars": 0
         },
+        "A-contextual": {
+          "leakageRate": 0.06331704571618614,
+          "goldChars": 78178
+        },
         "ocr-garbled": {
-          "leakageRate": 0.8535969709718132,
-          "goldChars": 7131
+          "leakageRate": 0.8531890980612532,
+          "goldChars": 7118
+        },
+        "composite": {
+          "leakageRate": 0.0154066985645933,
+          "goldChars": 10450
         },
         "B-unlabelled": {
-          "leakageRate": 0.3681606107733635,
-          "goldChars": 7073
+          "leakageRate": 0.35698621553884713,
+          "goldChars": 12768
         },
         "regression": {
           "leakageRate": 0.016666666666666666,
           "goldChars": 1140
-        },
-        "composite": {
-          "leakageRate": 0.010432618683001531,
-          "goldChars": 10448
         }
       },
       "leakageBySurfaceForm": {
-        "zwsp": {
-          "leakageRate": 0.08122540753232153,
-          "goldChars": 7116
-        },
         "ascii": {
-          "leakageRate": 0.0787564257077502,
-          "goldChars": 40657
+          "leakageRate": 0.0944711862881821,
+          "goldChars": 66687
         },
-        "deva": {
-          "leakageRate": 0.09058380414312618,
-          "goldChars": 5310
-        },
-        "nbsp": {
-          "leakageRate": 0.09952874646559849,
-          "goldChars": 5305
-        },
-        "ocr": {
-          "leakageRate": 0.8535969709718132,
-          "goldChars": 7131
+        "zwsp": {
+          "leakageRate": 0.09615384615384616,
+          "goldChars": 7124
         },
         "endash": {
-          "leakageRate": 0.0701254275940707,
-          "goldChars": 5262
-        },
-        "fullwidth": {
-          "leakageRate": 0.08750290900628345,
-          "goldChars": 4297
+          "leakageRate": 0.09540164090822362,
+          "goldChars": 5241
         },
         "pers": {
-          "leakageRate": 0.07561260210035006,
-          "goldChars": 4285
+          "leakageRate": 0.0923149015932521,
+          "goldChars": 4268
         },
         "arab": {
-          "leakageRate": 0.08657907085875176,
-          "goldChars": 4262
+          "leakageRate": 0.08677494199535962,
+          "goldChars": 4310
+        },
+        "ocr": {
+          "leakageRate": 0.8531890980612532,
+          "goldChars": 7118
+        },
+        "fullwidth": {
+          "leakageRate": 0.09600938967136151,
+          "goldChars": 4260
+        },
+        "nbsp": {
+          "leakageRate": 0.0831129580657348,
+          "goldChars": 5294
+        },
+        "deva": {
+          "leakageRate": 0.10949177877428999,
+          "goldChars": 5352
         }
       },
-      "msPerSample": 0.005,
+      "msPerSample": 0.006,
       "verification": {
-        "rawLeakageRate": 0.1472526158445441,
-        "verifyBestEffortLeakageRate": 0.09332137518684604,
+        "rawLeakageRate": 0.14373392671493973,
+        "verifyBestEffortLeakageRate": 0.07276524340197348,
         "verifyGatedLeakageInSent": 0,
-        "blockedSampleRate": 0.06529411764705882,
-        "blockedGoldCharRate": 0.09568908819133035,
-        "blockedSpans": 561,
-        "verifyOverRedactionRate": 0.2603262248063528
+        "blockedSampleRate": 0.056539235412474846,
+        "blockedGoldCharRate": 0.07569263319167563,
+        "blockedSpans": 576,
+        "verifyOverRedactionRate": 0.25057676290437897
       }
     }
   ]
