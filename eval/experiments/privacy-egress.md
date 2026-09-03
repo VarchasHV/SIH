@@ -1,6 +1,6 @@
 # The Privacy Experiment — raw PII bytes to server (Phase 15)
 
-**11 screens × 5 task goals = 55 cases per pipeline** · 2026-09-03 · commit `a58a7fa`
+**11 screens × 5 task goals = 55 cases per pipeline** · 2026-09-03 · commit `b7f0cb8`
 
 | Pipeline | Raw PII bytes → server | Distinct PII values leaked | Task-goal PII bytes |
 |---|--:|--:|--:|

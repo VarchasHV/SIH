@@ -1,33 +1,33 @@
 # Benchmark Report
 
-Generated 2026-09-03T07:58:51.242Z · commit `a58a7fa` (dirty) · Apple M3 · Node v24.16.0 · Darwin 25.6.0
+Generated 2026-09-03T15:12:02.630Z · commit `b7f0cb8` (dirty) · Apple M3 · Node v24.16.0 · Darwin 25.6.0
 
 Every number here is a **measurement**. Where something was not run it says so. Regenerate: `npm run bench && npm run bench:redaction && npm run bench:latency && npm run bench:screens && node eval/experiments/privacy-egress.mjs && .venv/bin/python eval/bench/competitors/run_competitors.py && node scripts/aggregate-benchmarks.mjs`
 
-**Corpus** (`eval/bench/gen-corpus.mjs`): seed 20260902 · 8500 samples · 6037 gold spans · 0 offset errors.
+**Corpus** (`eval/bench/gen-corpus.mjs`): seed 20260902 · 9940 samples · 6835 gold spans · 0 offset errors.
 
 ## 1. PII detection (span-level, seeded adversarial corpus)
 
-Overall (blended): **P 99.2% · R 84.1% · F1 91.0%**
+Overall (blended): **P 99.4% · R 84.1% · F1 91.1%**
 
 | Class | metric | value |
 |---|---|--:|
-| A-contextual | recall (n=4099) | 93.8% |
-| B-unlabelled | recall (n=559) | 57.1% |
-| C-structured | recall (n=3706) | 86.2% |
-| D-adversarial-neg | false-positive rate (19/2240) | 0.8% |
+| A-contextual | recall (n=4731) | 93.5% |
+| B-unlabelled | recall (n=727) | 56.3% |
+| C-structured | recall (n=4110) | 87.4% |
+| D-adversarial-neg | false-positive rate (20/2880) | 0.7% |
 | clean | false-positive rate (0/700) | 0.0% |
-| ocr | recall (n=542) | 16.1% |
-| composite | recall (n=777) | 98.6% |
+| ocr | recall (n=542) | 16.2% |
+| composite | recall (n=775) | 98.7% |
 | regression | recall (n=60) | 98.3% |
 
-Unicode/OCR (recall by surface form): zwsp 91.3% · deva 89.6% · nbsp 88.9% · ascii 91.0% · ocr 16.1% · endash 92.1% · fullwidth 90.7% · pers 91.3% · arab 90.3%
+Unicode/OCR (recall by surface form): zwsp 90.3% · ascii 90.2% · endash 89.1% · pers 89.3% · arab 90.0% · ocr 16.2% · fullwidth 89.7% · nbsp 90.5% · deva 87.2%
 
 ## 2. Redaction (scored against ground-truth spans)
 
-Leakage rate **14.7%** · fully redacted 82.4% · over-redaction 0.3% · char IoU 85.0%
+Leakage rate **14.4%** · fully redacted 82.6% · over-redaction 0.3% · char IoU 85.4%
 
-Leakage by class: A-contextual 6.0% · other 0.0% · ocr-garbled 85.4% · B-unlabelled 36.8% · regression 1.7% · composite 1.0%
+Leakage by class: other 0.0% · A-contextual 6.3% · ocr-garbled 85.3% · composite 1.5% · B-unlabelled 35.7% · regression 1.7%
 
 ## 3. Latency — DETECTOR ONLY (measured)
 

@@ -92,6 +92,47 @@ async function loadBitmap(dataURL) {
   return { width: 1, height: 1 };
 }
 
+// HiDPI / 4K captures carry no extra text detail over their CSS-pixel size but
+// cost 4-16x the single-threaded WASM OCR time. Downscale to ~1x (capped) before
+// OCR, then scale the line boxes back so every caller keeps working in
+// full-resolution screenshot coordinates.
+const OCR_TARGET_MAX_WIDTH = 2000;
+
+function makeCanvas(w, h) {
+  if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(w, h);
+  if (typeof document !== "undefined" && document.createElement) {
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+  return null;
+}
+
+async function ocrLinesScaled(source, dpr = 1, fullW = 1, fullH = 1) {
+  const w = source?.width || fullW;
+  const h = source?.height || fullH;
+  let scale = dpr > 1 ? 1 / dpr : 1;
+  if (w * scale > OCR_TARGET_MAX_WIDTH) scale = OCR_TARGET_MAX_WIDTH / w;
+  if (!w || !h || scale >= 0.999) return ocrLines(source, w, h);
+
+  const sw = Math.max(1, Math.round(w * scale));
+  const sh = Math.max(1, Math.round(h * scale));
+  const small = makeCanvas(sw, sh);
+  if (!small) return ocrLines(source, w, h);
+  try {
+    small.getContext("2d").drawImage(source, 0, 0, sw, sh);
+  } catch {
+    return ocrLines(source, w, h);
+  }
+  const inv = 1 / scale;
+  const lines = await ocrLines(small, sw, sh);
+  return lines.map((l) => ({
+    text: l.text,
+    bbox: { x0: l.bbox.x0 * inv, y0: l.bbox.y0 * inv, x1: l.bbox.x1 * inv, y1: l.bbox.y1 * inv },
+  }));
+}
+
 // OCR any source Tesseract.js accepts (ImageBitmap, canvas, ImageData, dataURL)
 // -> [{ text, bbox:{x0,y0,x1,y1} }]. Reuses the single shared worker.
 async function ocrLines(source, fallbackW = 1, fallbackH = 1) {
@@ -112,9 +153,9 @@ async function ocrLines(source, fallbackW = 1, fallbackH = 1) {
   return lines;
 }
 
-async function runOCR(bitmap) {
+async function runOCR(bitmap, dpr = 1) {
   const t0 = performance.now();
-  const lines = await ocrLines(bitmap, bitmap.width, bitmap.height);
+  const lines = await ocrLinesScaled(bitmap, dpr, bitmap.width, bitmap.height);
   const dets = [];
   for (const line of lines) {
     // 1. Scan for PII text
@@ -206,19 +247,24 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
       timings.visionStageBaselineMs = Math.round(visionStageBaselineMs);
     }
   } else {
+    // Face detection + the YOLOS ViT only ever find things in RASTER imagery
+    // (a person / face in a photo, avatar or screenshot). On a page the DOM
+    // reports as having no <canvas> and no large image, they cost ~1.5s to
+    // return nothing. Run them only when there is raster content to inspect;
+    // OCR (the primary PII channel) always runs. `forceVision` and a missing
+    // a11yStats both fall back to running everything.
+    const wantRaster = forceVision || !a11yStats || a11yStats.hasLargeRaster === true || a11yStats.hasCanvas === true;
     const [ocrRes, facesRes, vitRes] = await Promise.all([
-      runOCR(bitmap).catch((e) => ({ dets: [], lines: [], lineCount: 0, ms: 0, error: e.message })),
-      runFaces(bitmap).catch((e) => ({ dets: [], ms: 0, available: false, error: e.message })),
-      detectObjects(getRuntimeUrl, canvas).catch((e) => ({
-        dets: [],
-        backend: null,
-        ms: 0,
-        loadMs: null,
-        labels: [],
-        available: false,
-        error: e.message,
-        gpu: { available: false },
-      })),
+      runOCR(bitmap, dpr).catch((e) => ({ dets: [], lines: [], lineCount: 0, ms: 0, error: e.message })),
+      wantRaster
+        ? runFaces(bitmap).catch((e) => ({ dets: [], ms: 0, available: false, error: e.message }))
+        : Promise.resolve({ dets: [], ms: 0, available: false, skipped: true }),
+      wantRaster
+        ? detectObjects(getRuntimeUrl, canvas).catch((e) => ({
+            dets: [], backend: null, ms: 0, loadMs: null, labels: [],
+            available: false, error: e.message, gpu: { available: false },
+          }))
+        : Promise.resolve({ dets: [], backend: "skipped:no-raster", ms: 0, loadMs: null, labels: [], available: false, skipped: true, gpu: { available: false } }),
     ]);
     ocr = ocrRes;
     faces = facesRes;
@@ -226,6 +272,7 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
     timings.ocrMs = Math.round(ocr.ms);
     timings.faceMs = Math.round(faces.ms);
     timings.vitMs = Math.round(vit.ms);
+    timings.rasterInspected = wantRaster;
     if (vit.loadMs != null) timings.vitLoadMs = vit.loadMs;
     timings.a11yBypassed = false;
   }
@@ -271,7 +318,7 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
   if (doVerify) {
     try {
       verify = await verifyRedaction(canvas, applied.regions, {
-        ocr: (c) => ocrLines(c, canvas.width, canvas.height),
+        ocr: (c) => ocrLinesScaled(c, dpr, canvas.width, canvas.height),
       });
     } catch (e) {
       // a verification error is a fail-closed condition — we could not confirm

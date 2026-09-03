@@ -1,9 +1,9 @@
 {
-  "generatedAt": "2026-09-03T07:58:51.242Z",
+  "generatedAt": "2026-09-03T15:12:02.630Z",
   "environment": {
-    "timestamp": "2026-09-03T07:58:51.285Z",
-    "gitCommit": "a58a7fa",
-    "gitBranch": "working",
+    "timestamp": "2026-09-03T15:12:02.675Z",
+    "gitCommit": "b7f0cb8",
+    "gitBranch": "endgame",
     "gitDirty": true,
     "nodeVersion": "v24.16.0",
     "v8": "13.6.233.17-node.49",
@@ -16,48 +16,48 @@
   },
   "corpus": {
     "seed": 20260902,
-    "samples": 8500,
-    "goldSpans": 6037,
+    "samples": 9940,
+    "goldSpans": 6835,
     "spanOffsetErrors": 0,
-    "version": 2
+    "version": 3
   },
   "detection": {
     "overall": {
-      "tp": 5076,
-      "fp": 41,
-      "fn": 961,
-      "precision": 0.9919874926714872,
-      "recall": 0.8408149743249959,
-      "f1": 0.9101667563206024
+      "tp": 5745,
+      "fp": 37,
+      "fn": 1090,
+      "precision": 0.9936008301625735,
+      "recall": 0.8405267008046818,
+      "f1": 0.9106760719663947
     },
     "byClass": {
       "A-contextual": {
         "kind": "positive",
-        "n": 4099,
-        "recall": 0.9380336667479873,
+        "n": 4731,
+        "recall": 0.9351088564785458,
         "spanFP": 10,
-        "gold": 4099
+        "gold": 4731
       },
       "B-unlabelled": {
         "kind": "positive",
-        "n": 559,
-        "recall": 0.5706618962432916,
-        "spanFP": 0,
-        "gold": 559
+        "n": 727,
+        "recall": 0.562585969738652,
+        "spanFP": 1,
+        "gold": 727
       },
       "C-structured": {
         "kind": "positive",
-        "n": 3583,
-        "recall": 0.8615758229897463,
-        "spanFP": 4,
-        "gold": 3706
+        "n": 3985,
+        "recall": 0.8739659367396594,
+        "spanFP": 3,
+        "gold": 4110
       },
       "D-adversarial-neg": {
         "kind": "negative",
-        "n": 2240,
-        "falsePositiveRate": 0.008482142857142856,
-        "lineFP": 19,
-        "spanFP": 19
+        "n": 2880,
+        "falsePositiveRate": 0.006944444444444444,
+        "lineFP": 20,
+        "spanFP": 20
       },
       "clean": {
         "kind": "negative",
@@ -69,16 +69,16 @@
       "ocr": {
         "kind": "positive",
         "n": 542,
-        "recall": 0.16051660516605165,
-        "spanFP": 4,
+        "recall": 0.16236162361623616,
+        "spanFP": 3,
         "gold": 542
       },
       "composite": {
         "kind": "positive",
         "n": 300,
-        "recall": 0.9858429858429858,
-        "spanFP": 8,
-        "gold": 777
+        "recall": 0.9870967741935484,
+        "spanFP": 3,
+        "gold": 775
       },
       "regression": {
         "kind": "positive",
@@ -90,40 +90,40 @@
     },
     "bySurfaceForm": {
       "zwsp": {
-        "recall": 0.9133333333333333,
+        "recall": 0.9033333333333333,
         "n": 300
-      },
-      "deva": {
-        "recall": 0.896,
-        "n": 375
-      },
-      "nbsp": {
-        "recall": 0.8891891891891892,
-        "n": 370
       },
       "ascii": {
-        "recall": 0.9095193213949104,
-        "n": 3183
-      },
-      "ocr": {
-        "recall": 0.16051660516605165,
-        "n": 542
+        "recall": 0.9017834714895755,
+        "n": 3981
       },
       "endash": {
-        "recall": 0.9209809264305178,
+        "recall": 0.8910081743869209,
         "n": 367
       },
-      "fullwidth": {
-        "recall": 0.9066666666666666,
-        "n": 300
-      },
       "pers": {
-        "recall": 0.9133333333333333,
+        "recall": 0.8933333333333333,
         "n": 300
       },
       "arab": {
-        "recall": 0.9033333333333333,
+        "recall": 0.9,
         "n": 300
+      },
+      "ocr": {
+        "recall": 0.16236162361623616,
+        "n": 542
+      },
+      "fullwidth": {
+        "recall": 0.8966666666666666,
+        "n": 300
+      },
+      "nbsp": {
+        "recall": 0.9054054054054054,
+        "n": 370
+      },
+      "deva": {
+        "recall": 0.872,
+        "n": 375
       }
     },
     "note": "span-level IoU>=0.5, micro-averaged; class A/B/C/D reported separately"
@@ -131,79 +131,88 @@
   "redaction": {
     "id": "current",
     "name": "current (regex+checksum)",
-    "goldChars": 83625,
-    "goldSpans": 6037,
-    "leakageRate": 0.1472526158445441,
-    "fullyRedactedRate": 0.8235878747722378,
-    "partialLeakRate": 0.17641212522776215,
-    "overRedactionRate": 0.0032428050263477908,
-    "charIoU": 0.8503881607975482,
-    "maskedChars": 71543,
+    "goldChars": 109654,
+    "goldSpans": 6835,
+    "leakageRate": 0.14373392671493973,
+    "fullyRedactedRate": 0.8257498171177762,
+    "partialLeakRate": 0.17425018288222385,
+    "overRedactionRate": 0.002560180168695689,
+    "charIoU": 0.8543882797215524,
+    "maskedChars": 94134,
     "leakageByClass": {
-      "A-contextual": {
-        "leakageRate": 0.060432624971901855,
-        "goldChars": 57833
-      },
       "other": {
         "leakageRate": 0,
         "goldChars": 0
       },
+      "A-contextual": {
+        "leakageRate": 0.06331704571618614,
+        "goldChars": 78178
+      },
       "ocr-garbled": {
-        "leakageRate": 0.8535969709718132,
-        "goldChars": 7131
+        "leakageRate": 0.8531890980612532,
+        "goldChars": 7118
+      },
+      "composite": {
+        "leakageRate": 0.0154066985645933,
+        "goldChars": 10450
       },
       "B-unlabelled": {
-        "leakageRate": 0.3681606107733635,
-        "goldChars": 7073
+        "leakageRate": 0.35698621553884713,
+        "goldChars": 12768
       },
       "regression": {
         "leakageRate": 0.016666666666666666,
         "goldChars": 1140
-      },
-      "composite": {
-        "leakageRate": 0.010432618683001531,
-        "goldChars": 10448
       }
     },
     "leakageBySurfaceForm": {
-      "zwsp": {
-        "leakageRate": 0.08122540753232153,
-        "goldChars": 7116
-      },
       "ascii": {
-        "leakageRate": 0.0787564257077502,
-        "goldChars": 40657
+        "leakageRate": 0.0944711862881821,
+        "goldChars": 66687
       },
-      "deva": {
-        "leakageRate": 0.09058380414312618,
-        "goldChars": 5310
-      },
-      "nbsp": {
-        "leakageRate": 0.09952874646559849,
-        "goldChars": 5305
-      },
-      "ocr": {
-        "leakageRate": 0.8535969709718132,
-        "goldChars": 7131
+      "zwsp": {
+        "leakageRate": 0.09615384615384616,
+        "goldChars": 7124
       },
       "endash": {
-        "leakageRate": 0.0701254275940707,
-        "goldChars": 5262
-      },
-      "fullwidth": {
-        "leakageRate": 0.08750290900628345,
-        "goldChars": 4297
+        "leakageRate": 0.09540164090822362,
+        "goldChars": 5241
       },
       "pers": {
-        "leakageRate": 0.07561260210035006,
-        "goldChars": 4285
+        "leakageRate": 0.0923149015932521,
+        "goldChars": 4268
       },
       "arab": {
-        "leakageRate": 0.08657907085875176,
-        "goldChars": 4262
+        "leakageRate": 0.08677494199535962,
+        "goldChars": 4310
+      },
+      "ocr": {
+        "leakageRate": 0.8531890980612532,
+        "goldChars": 7118
+      },
+      "fullwidth": {
+        "leakageRate": 0.09600938967136151,
+        "goldChars": 4260
+      },
+      "nbsp": {
+        "leakageRate": 0.0831129580657348,
+        "goldChars": 5294
+      },
+      "deva": {
+        "leakageRate": 0.10949177877428999,
+        "goldChars": 5352
       }
     },
-    "msPerSample": 0.005
+    "msPerSample": 0.006,
+    "verification": {
+      "rawLeakageRate": 0.14373392671493973,
+      "verifyBestEffortLeakageRate": 0.07276524340197348,
+      "verifyGatedLeakageInSent": 0,
+      "blockedSampleRate": 0.056539235412474846,
+      "blockedGoldCharRate": 0.07569263319167563,
+      "blockedSpans": 576,
+      "verifyOverRedactionRate": 0.25057676290437897
+    }
   },
   "latency": {
     "detector": "current",

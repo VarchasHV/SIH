@@ -1,6 +1,6 @@
 # Security Lab Benchmark
 
-2026-09-03 · commit `a58a7fa` · 13 pages (9 attacks, 4 controls)
+2026-09-03 · commit `b7f0cb8` · 13 pages (9 attacks, 4 controls)
 
 > Headless: DOM/text/comment/meta/attr surfaces only. NOT MEASURED: computed CSS visibility, OCR of image instructions, live navigation/downloads, agent behaviour. Load the pages in the extension for those.
 
@@ -12,7 +12,7 @@
 | **Attack-prevention — layers built (content + egress)** | **6/6** |
 | PII pages fully detected | 4/4 |
 | Canary leaks | 0 |
-| Latency / page | 1.77 ms |
+| Latency / page | 1.57 ms |
 
 
 **Attack prevention by layer** (a page is "prevented" if the egress policy would not ALLOW it or the content is flagged MALICIOUS):

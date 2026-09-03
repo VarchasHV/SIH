@@ -132,19 +132,47 @@
       nodes.push(node);
     });
     const hasCanvas = document.querySelectorAll("canvas").length > 0;
+
+    // Large raster media = a photo / screenshot / avatar big enough to carry a
+    // face, a body or a document. Small brand logos and icons are excluded, so
+    // an ordinary form with a header logo still qualifies for the fast-path.
+    const RASTER_MIN_AREA = 150 * 150;
+    let hasLargeRaster = false;
+    document.querySelectorAll("img, video, picture, [role=img]").forEach((el) => {
+      if (hasLargeRaster) return;
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height >= RASTER_MIN_AREA) hasLargeRaster = true;
+    });
+
     let labeledCount = 0;
     let unlabeledCount = 0;
+    let unlabeledInputCount = 0; // value-bearing fields with no label/name — OCR is NOT safe to skip for these
     nodes.forEach((n) => {
       if (n.label || n.name || n.text || n.piiCategory) {
         labeledCount++;
-      } else {
-        unlabeledCount++;
+        return;
+      }
+      unlabeledCount++;
+      if (["input", "textarea", "select"].includes(n.tag) || ["textbox", "combobox"].includes(n.role)) {
+        unlabeledInputCount++;
       }
     });
 
     const totalCount = nodes.length;
     const a11yConfidence = totalCount > 0 ? labeledCount / totalCount : 1.0;
-    const a11yFastPathEligible = a11yConfidence >= 0.85 && unlabeledCount === 0 && !hasCanvas;
+
+    // The fast-path skips ALL on-device vision (OCR + face + ViT). That is only
+    // safe when the DOM fully accounts for the page's data-bearing surface:
+    //   - a high labelled ratio (>= 0.85),
+    //   - no <canvas> / large raster image (content only a pixel pass would see),
+    //   - every value-bearing field is labelled. Unlabelled buttons / links /
+    //     icon controls are fine — they hold no typed data — so we no longer
+    //     require unlabeledCount === 0, which virtually every real form failed.
+    const a11yFastPathEligible =
+      a11yConfidence >= 0.85 &&
+      !hasCanvas &&
+      !hasLargeRaster &&
+      unlabeledInputCount === 0;
 
     return {
       url: location.href.split(/[?#]/)[0],
@@ -160,7 +188,9 @@
         totalNodes: totalCount,
         labeledNodes: labeledCount,
         unlabeledNodes: unlabeledCount,
+        unlabeledInputNodes: unlabeledInputCount,
         hasCanvas,
+        hasLargeRaster,
         confidence: Math.round(a11yConfidence * 100) / 100,
         fastPathEligible: a11yFastPathEligible,
       },

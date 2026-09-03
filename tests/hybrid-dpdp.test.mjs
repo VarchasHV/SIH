@@ -76,6 +76,36 @@ test("Hybrid A11y Fast-Path - Bypasses heavy vision inference when accessibility
   assert.equal("latencySavingsMs" in res.timings, false, "the fabricated 280ms constant is gone");
 });
 
+test("Selective ViT - raster detectors are skipped when the DOM reports no image/canvas content", async () => {
+  const dummyShot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+  // slow path (fastPathEligible:false) but a clean text form — no canvas, no raster
+  const res = await processVision({
+    screenshot: dummyShot, domPiiBoxes: [], fields: [], dpr: 1, mode: "blackout",
+    a11yStats: { totalNodes: 12, labeledNodes: 9, unlabeledNodes: 3, unlabeledInputNodes: 0, hasCanvas: false, hasLargeRaster: false, confidence: 0.75, fastPathEligible: false },
+  });
+  assert.equal(res.timings.a11yBypassed, false, "still the full pipeline (OCR runs)");
+  assert.equal(res.timings.rasterInspected, false, "face + ViT skipped: nothing raster to inspect");
+  assert.equal(res.stats.vit.backend, "skipped:no-raster");
+  assert.equal(res.timings.vitMs, 0);
+
+  // same page but with a large image present -> raster detectors run
+  const res2 = await processVision({
+    screenshot: dummyShot, domPiiBoxes: [], fields: [], dpr: 1, mode: "blackout",
+    a11yStats: { totalNodes: 12, labeledNodes: 9, unlabeledNodes: 3, unlabeledInputNodes: 0, hasCanvas: false, hasLargeRaster: true, confidence: 0.75, fastPathEligible: false },
+  });
+  assert.equal(res2.timings.rasterInspected, true);
+  assert.notEqual(res2.stats.vit.backend, "skipped:no-raster");
+
+  // forceVision overrides the skip
+  const res3 = await processVision({
+    screenshot: dummyShot, domPiiBoxes: [], fields: [], dpr: 1, mode: "blackout",
+    a11yStats: { totalNodes: 3, labeledNodes: 3, unlabeledNodes: 0, hasCanvas: false, hasLargeRaster: false, confidence: 1, fastPathEligible: false },
+    forceVision: true,
+  });
+  assert.equal(res3.timings.rasterInspected, true, "forceVision runs raster detectors regardless");
+});
+
 test("Hybrid A11y Fast-Path - a caller-measured vision baseline is echoed, not invented", async () => {
   const dummyShot = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
   const res = await processVision({
