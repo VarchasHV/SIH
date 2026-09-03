@@ -1,4 +1,4 @@
-"""Privacy Lens agent server.
+"""CONNOR agent server.
 
 POST /agent/step  - sanitized context in, validated action plan out.
 GET  /health      - liveness + current VLM mode.
@@ -24,7 +24,7 @@ try:
 except Exception:  # noqa: BLE001
     pass
 
-app = FastAPI(title="Privacy Lens Agent", version="0.2.0")
+app = FastAPI(title="CONNOR Agent", version="0.2.0")
 
 app.add_middleware(
     CORSMiddleware,

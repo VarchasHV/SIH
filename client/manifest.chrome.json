@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Privacy Lens — Vision Agent",
+  "name": "CONNOR — Vision Agent",
   "version": "0.2.0",
   "description": "On-device vision agent: reads the screen, redacts PII locally, and lets a server VLM drive form-filling without ever seeing your data.",
   "permissions": ["activeTab", "scripting", "storage", "offscreen", "tabs"],
@@ -10,7 +10,7 @@
     "<all_urls>"
   ],
   "action": {
-    "default_title": "Privacy Lens — Vision Agent",
+    "default_title": "CONNOR — Vision Agent",
     "default_popup": "popup.html"
   },
   "background": {

@@ -1,4 +1,4 @@
-# AUDIT.md — Privacy Lens / SIH26171
+# AUDIT.md — CONNOR / SIH26171
 
 **Commit:** `78d05d8` · **Branch:** `working` · **Date:** 2026-09-02
 **Env:** Node v24.16.0 · Python 3.12.7 (`.venv`) · Darwin 25.6.0

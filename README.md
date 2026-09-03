@@ -1,6 +1,6 @@
-# Privacy Lens 🛡️
+# CONNOR 🛡️
 
-**Privacy Lens** is an on-device, privacy-preserving visual AI agent designed for secure browser automation. It enables Vision-Language Models (VLMs) like Gemini and OpenAI to intelligently assist with and automate web form filling—without ever exposing your sensitive Personal Identifiable Information (PII), credentials, or private data to external AI servers.
+**CONNOR** is an on-device, privacy-preserving visual AI agent designed for secure browser automation. It enables Vision-Language Models (VLMs) like Gemini and OpenAI to intelligently assist with and automate web form filling—without ever exposing your sensitive Personal Identifiable Information (PII), credentials, or private data to external AI servers.
 
 ---
 
@@ -20,7 +20,7 @@
 [ Web Page / Form ]
         │
         ▼
-[ Privacy Lens Extension ] ──( On-Device OCR & Face Detection )
+[ CONNOR Extension ] ──( On-Device OCR & Face Detection )
         │                  ──( Blackout Redaction & Verification )
         │                  ──( DOM Skeleton Stripping )
         ▼
@@ -38,7 +38,7 @@
 
 ---
 ## Screenshots
-![alt text](image-1.png)
+![alt text](image.png)
 ---
 
 ## 🚀 Quick Start

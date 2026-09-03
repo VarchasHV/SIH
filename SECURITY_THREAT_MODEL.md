@@ -2,7 +2,7 @@
 
 **Commit `ac414ae` · 2026-09-02 · MV3 extension (`activeTab, scripting, storage, offscreen, tabs`) + FastAPI relay**
 
-Privacy Lens is an **on-device browser security gateway for an autonomous AI
+CONNOR is an **on-device browser security gateway for an autonomous AI
 agent**. It sits between untrusted web content and a remote VLM, and between the
 VLM's proposed actions and the page. It is **not** a general browser firewall.
 
