@@ -13,6 +13,7 @@
 // can gate each server call / the final submit.
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
+import { requestCloudStep, CloudAuthError } from "./lib/cloud-agent-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
@@ -366,20 +367,57 @@ async function runAgentTask(opts) {
       if (!ok) { emit({ type: "cancelled", step }); break; }
     }
 
-    // 7. server round-trip
+    // 7. agent round-trip (cloud if API key configured, otherwise local server)
     let plan;
-    try {
-      plan = await requestStep(cfg.serverUrl, payload);
-    } catch (e) {
-      const aiDown = e.status === 503;
-      const where = e.isNetworkError ? "network (server offline)"
-        : e.isTimeout ? "AI timed out"
-        : aiDown ? "AI unavailable"
-        : `server (HTTP ${e.status || "error"})`;
-      // The server no longer falls back to a mock agent — a model failure
-      // stops the run and the user retries.
-      emit({ type: "error", step, where, message: e.message, retryable: true, aiUnavailable: aiDown || e.isTimeout || e.isNetworkError });
-      break;
+    const { settings: activeSettings = {} } = await chrome.storage.local.get("settings");
+    const cloudSettings = {
+      aiProvider: activeSettings.aiProvider || cfg.aiProvider || "gemini",
+      aiModel: activeSettings.aiModel || cfg.aiModel || "",
+      aiApiKey: (activeSettings.aiApiKey || cfg.aiApiKey || "").trim(),
+      aiCustomEndpoint: activeSettings.aiCustomEndpoint || cfg.aiCustomEndpoint || "",
+    };
+
+    if (cloudSettings.aiApiKey) {
+      try {
+        plan = await requestCloudStep(cloudSettings, payload);
+      } catch (e) {
+        if (e instanceof CloudAuthError || e.isAuthError || e.name === "CloudAuthError") {
+          emit({
+            type: "error",
+            step,
+            where: `cloud auth (${cloudSettings.aiProvider})`,
+            message: `API key rejected: ${e.message}. Check your API key in Settings.`,
+            retryable: false,
+            aiUnavailable: false,
+          });
+          history.push({ step, error: `cloud auth rejected: ${e.message}` });
+          break;
+        }
+        const where = e.isTimeout ? "cloud AI timed out" : `cloud (${cloudSettings.aiProvider} error)`;
+        emit({
+          type: "error",
+          step,
+          where,
+          message: e.message,
+          retryable: true,
+          aiUnavailable: true,
+        });
+        break;
+      }
+    } else {
+      try {
+        plan = await requestStep(cfg.serverUrl, payload);
+      } catch (e) {
+        const aiDown = e.status === 503;
+        const where = e.isNetworkError ? "network (server offline)"
+          : e.isTimeout ? "AI timed out"
+          : aiDown ? "AI unavailable"
+          : `server (HTTP ${e.status || "error"})`;
+        // The server no longer falls back to a mock agent — a model failure
+        // stops the run and the user retries.
+        emit({ type: "error", step, where, message: e.message, retryable: true, aiUnavailable: aiDown || e.isTimeout || e.isNetworkError });
+        break;
+      }
     }
     emit({ type: "plan", step, rationale: plan.rationale, actions: plan.actions, serverLatencyMs: plan.serverLatencyMs, roundTripMs: Math.round(plan.roundTripMs) });
 

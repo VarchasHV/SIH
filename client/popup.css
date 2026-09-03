@@ -40,6 +40,14 @@ h1 { margin: 2px 0 0; font-size: 19px; line-height: 1; }
 .field > span { display: block; margin-bottom: 4px; font: 500 10px 'DM Mono', monospace; letter-spacing: .05em; color: var(--muted); }
 .field input, .field textarea, .field select { width: 100%; padding: 8px; border: 1px solid var(--line); background: var(--cream); font: 12px 'Space Grotesk', sans-serif; color: var(--ink); }
 .field textarea { resize: vertical; }
+.input-with-button { display: flex; gap: 4px; align-items: stretch; }
+.input-with-button input { flex: 1; min-width: 0; }
+.input-inline-btn { padding: 0 10px; border: 1px solid var(--line); background: var(--cream); font: 500 10px 'DM Mono', monospace; letter-spacing: .04em; color: var(--ink); cursor: pointer; white-space: nowrap; }
+.input-inline-btn:hover { border-color: var(--ink); }
+.input-inline-btn:disabled { opacity: .6; cursor: wait; }
+#testApiKeyResult:not(:empty) { display: block; margin: -2px 0 6px; font-weight: 500; font-family: 'DM Mono', monospace; }
+#testApiKeyResult.is-ok { color: #2f8f5b; }
+#testApiKeyResult.is-err { color: var(--coral); }
 .check { display: flex; align-items: center; gap: 7px; margin: 6px 0; font-size: 11px; color: var(--muted); }
 
 .mode-toggle { display: flex; gap: 4px; margin-bottom: 12px; }

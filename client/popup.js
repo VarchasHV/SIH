@@ -413,9 +413,63 @@ function startTask(opts) {
 }
 
 // ---- settings persistence --------------------------------
+function updateCustomEndpointVisibility() {
+  const isCustom = $("#aiProvider")?.value === "custom";
+  const customField = $("#aiCustomEndpointField");
+  if (customField) customField.hidden = !isCustom;
+}
+
+const toggleApiKeyBtn = $("#toggleApiKey");
+const apiKeyInput = $("#aiApiKey");
+if (toggleApiKeyBtn && apiKeyInput) {
+  toggleApiKeyBtn.addEventListener("click", () => {
+    const isPassword = apiKeyInput.type === "password";
+    apiKeyInput.type = isPassword ? "text" : "password";
+    toggleApiKeyBtn.textContent = isPassword ? "Hide" : "Show";
+  });
+}
+
+const testApiKeyBtn = $("#testApiKey");
+const testApiKeyResult = $("#testApiKeyResult");
+if (testApiKeyBtn && testApiKeyResult) {
+  testApiKeyBtn.addEventListener("click", async () => {
+    testApiKeyBtn.disabled = true;
+    testApiKeyBtn.textContent = "Testing…";
+    testApiKeyResult.textContent = "";
+    testApiKeyResult.classList.remove("is-ok", "is-err");
+
+    try {
+      const { testConnection } = await import("./lib/cloud-agent-client.mjs");
+      const currentSettings = {
+        aiProvider: $("#aiProvider")?.value || "gemini",
+        aiModel: $("#aiModel")?.value.trim() || "",
+        aiApiKey: $("#aiApiKey")?.value.trim() || "",
+        aiCustomEndpoint: $("#aiCustomEndpoint")?.value.trim() || "",
+      };
+      const res = await testConnection(currentSettings);
+      testApiKeyResult.textContent = res.message;
+      testApiKeyResult.classList.add(res.ok ? "is-ok" : "is-err");
+    } catch (err) {
+      testApiKeyResult.textContent = err.message || "Test failed";
+      testApiKeyResult.classList.add("is-err");
+    } finally {
+      testApiKeyBtn.disabled = false;
+      testApiKeyBtn.textContent = "Test";
+    }
+  });
+}
+
+$("#aiProvider")?.addEventListener("change", updateCustomEndpointVisibility);
+
 async function loadSettings() {
   const { settings = {} } = await chrome.storage.local.get("settings");
   if (settings.serverUrl !== undefined && $("#serverUrl")) $("#serverUrl").value = settings.serverUrl;
+  if ($("#aiProvider")) $("#aiProvider").value = settings.aiProvider || "gemini";
+  if (settings.aiModel !== undefined && $("#aiModel")) $("#aiModel").value = settings.aiModel;
+  if (settings.aiApiKey !== undefined && $("#aiApiKey")) $("#aiApiKey").value = settings.aiApiKey;
+  if (settings.aiCustomEndpoint !== undefined && $("#aiCustomEndpoint")) $("#aiCustomEndpoint").value = settings.aiCustomEndpoint;
+  updateCustomEndpointVisibility();
+
   if (settings.redactionMode !== undefined && $("#redactionMode")) $("#redactionMode").value = settings.redactionMode;
   if (settings.autoApprove !== undefined && $("#autoApprove")) $("#autoApprove").checked = Boolean(settings.autoApprove);
   if (settings.confirmEachSend !== undefined && $("#confirmEachSend")) $("#confirmEachSend").checked = Boolean(settings.confirmEachSend);
@@ -430,6 +484,10 @@ async function loadSettings() {
 async function saveSettings() {
   const settings = {
     serverUrl: $("#serverUrl")?.value.trim() || "http://localhost:8000",
+    aiProvider: $("#aiProvider")?.value || "gemini",
+    aiModel: $("#aiModel")?.value.trim() || "",
+    aiApiKey: $("#aiApiKey")?.value || "",
+    aiCustomEndpoint: $("#aiCustomEndpoint")?.value.trim() || "",
     redactionMode: $("#redactionMode")?.value || "blackout",
     autoApprove: Boolean($("#autoApprove")?.checked),
     confirmEachSend: Boolean($("#confirmEachSend")?.checked),
@@ -440,11 +498,11 @@ async function saveSettings() {
   await chrome.storage.local.set({ settings });
 }
 
-["#serverUrl", "#redactionMode", "#autoApprove", "#confirmEachSend", "#confirmBeforeSubmit", "#goal"].forEach((sel) => {
+["#serverUrl", "#aiProvider", "#aiCustomEndpoint", "#aiModel", "#aiApiKey", "#redactionMode", "#autoApprove", "#confirmEachSend", "#confirmBeforeSubmit", "#goal"].forEach((sel) => {
   const el = $(sel);
   if (el) {
     el.addEventListener("change", saveSettings);
-    if (el.tagName === "INPUT" && el.type === "text" || el.tagName === "TEXTAREA") {
+    if ((el.tagName === "INPUT" && el.type !== "checkbox" && el.type !== "radio") || el.tagName === "TEXTAREA") {
       el.addEventListener("input", saveSettings);
     }
   }
@@ -476,6 +534,19 @@ $("#cancel-button").addEventListener("click", () => {
 // ---- model status ----------------------------------------
 async function refreshAiStatus() {
   const el = $("#ai-status");
+  if (!el) return;
+
+  const cloudKey = ($("#aiApiKey")?.value || "").trim();
+  if (cloudKey) {
+    const provider = $("#aiProvider")?.value || "gemini";
+    const defaultModel = provider === "gemini" ? "gemini-2.0-flash" : provider === "openai" ? "gpt-4o-mini" : "default";
+    const model = ($("#aiModel")?.value || "").trim() || defaultModel;
+    el.textContent = `cloud: ${provider}/${model}`;
+    el.title = `Direct Cloud Mode (${provider}) · Model: ${model} · API key configured`;
+    el.classList.remove("is-offline");
+    return;
+  }
+
   const url = ($("#serverUrl")?.value.trim() || "http://localhost:8000").replace(/\/$/, "");
   try {
     const r = await fetch(`${url}/health`, { signal: AbortSignal.timeout(3000) });
@@ -493,6 +564,11 @@ async function refreshAiStatus() {
 }
 refreshAiStatus();
 $("#serverUrl")?.addEventListener("change", refreshAiStatus);
+$("#aiApiKey")?.addEventListener("input", refreshAiStatus);
+$("#aiApiKey")?.addEventListener("change", refreshAiStatus);
+$("#aiProvider")?.addEventListener("change", refreshAiStatus);
+$("#aiModel")?.addEventListener("input", refreshAiStatus);
+$("#aiModel")?.addEventListener("change", refreshAiStatus);
 
 // ---- legacy quick scan ------------------------------------
 $("#scan-button").addEventListener("click", () => {

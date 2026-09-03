@@ -72,6 +72,28 @@
     <details class="advanced">
       <summary>Settings</summary>
       <label class="field"><span>Server URL</span><input id="serverUrl" type="text" value="http://localhost:8000" /></label>
+      <label class="field"><span>AI Provider</span>
+        <select id="aiProvider">
+          <option value="gemini" selected>Google Gemini</option>
+          <option value="openai">OpenAI</option>
+          <option value="custom">Custom (OpenAI-compatible)</option>
+        </select>
+      </label>
+      <label class="field" id="aiCustomEndpointField" hidden><span>Custom Endpoint URL</span>
+        <input id="aiCustomEndpoint" type="text" placeholder="https://..." />
+      </label>
+      <label class="field"><span>Model</span>
+        <input id="aiModel" type="text" placeholder="e.g. gemini-2.0-flash or gpt-4o-mini" />
+      </label>
+      <label class="field"><span>API Key</span>
+        <div class="input-with-button">
+          <input id="aiApiKey" type="password" autocomplete="off" spellcheck="false" placeholder="Paste your API key" />
+          <button type="button" id="toggleApiKey" class="input-inline-btn" title="Show or hide API key" aria-label="Show or hide API key">Show</button>
+          <button type="button" id="testApiKey" class="input-inline-btn" title="Test connection to provider">Test</button>
+        </div>
+      </label>
+      <span id="testApiKeyResult" class="hint"></span>
+      <p class="hint">Stored locally on this device only (chrome.storage.local). Never sent anywhere except your chosen provider's API when the agent runs. Each agent step sends one image + prompt to your provider and is billed to your account under their pricing.</p>
       <label class="field"><span>Redaction</span>
         <select id="redactionMode">
           <option value="blackout" selected>Blackout (Solid Boxes)</option>
