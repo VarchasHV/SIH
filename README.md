@@ -4,9 +4,8 @@
 
 ---
 
-## ✨ Key Features
-
-- **Zero-PII Vision Redaction**: Automatically detects and masks sensitive text, faces, credentials, and numbers (e.g., SSN, credit cards, phone numbers) before screenshots leave your browser.
+## 🗣️ Key Features
+- **Zero-PII Processing**: Personal information (PII) is detected and stored locally on the user's device and is redacted before screenshots or data are sent to a cloud LLM.
 - **Multi-Layer Detection**: Combines DOM accessibility trees, on-device OCR (Tesseract WASM), and MediaPipe BlazeFace detection for comprehensive coverage.
 - **Fail-Closed Verification Gate**: Re-scans masked visuals before egress to ensure zero accidental data leakage.
 - **Action Firewall**: Validates and sandboxes all actions suggested by the AI agent prior to execution in your browser.
