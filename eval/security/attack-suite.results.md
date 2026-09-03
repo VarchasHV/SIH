@@ -1,6 +1,6 @@
 # Attack Suite — baseline vs our system
 
-2026-09-02 · commit `5c0c3a2` · 8 headless attack pages (1 OCR-only excluded)
+2026-09-03 · commit `a58a7fa` · 8 headless attack pages (1 OCR-only excluded)
 
 > baseline = a naive agent that follows injected instructions, sends page content raw, and clicks the presented control. Not a real second agent.
 

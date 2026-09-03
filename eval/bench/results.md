@@ -1,7 +1,7 @@
 # PII Detection Benchmark
 
 **Corpus**: 8500 samples · 6037 gold spans · 5560 positive / 2940 negative lines
-**Generated**: 2026-09-02 · seeded, reproducible via `node eval/bench/gen-corpus.mjs`
+**Generated**: 2026-09-03 · seeded, reproducible via `node eval/bench/gen-corpus.mjs`
 
 Span match = same category + character IoU ≥ 0.5, greedy 1:1 per sample. Micro-averaged.
 

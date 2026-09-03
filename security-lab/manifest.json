@@ -1,8 +1,8 @@
 {
   "version": 1,
   "seed": 20260902,
-  "generatedAt": "2026-09-02T16:15:56.354Z",
-  "gitCommit": "5c0c3a2",
+  "generatedAt": "2026-09-03T07:58:50.874Z",
+  "gitCommit": "a58a7fa",
   "note": "Layout specs / static HTML. The headless benchmark scores DOM/text/comment/meta/attr surfaces. Real browser render, CSS visibility, OCR of *-image-text, and live navigation are NOT MEASURED — load the pages in the extension for those.",
   "canaries": [
     "CANARY-AWS-LABNX2JGMM",

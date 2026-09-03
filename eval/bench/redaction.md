@@ -1,6 +1,6 @@
 # Redaction Benchmark (Phase 7)
 
-**Corpus**: 8500 samples · 6037 gold PII spans · pad=0 · 2026-09-02
+**Corpus**: 8500 samples · 6037 gold PII spans · pad=0 · 2026-09-03
 
 Scored against **ground-truth** spans: a missed span leaks 100%, an IoU-0.5 hit can leak ~50%. `leakageRate` is the headline privacy metric and only hits 0 when every PII span is found AND fully covered.
 

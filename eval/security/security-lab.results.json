@@ -2,8 +2,8 @@
   "benchmark": "security-lab",
   "version": 1,
   "environment": {
-    "timestamp": "2026-09-02T16:15:56.462Z",
-    "gitCommit": "5c0c3a2",
+    "timestamp": "2026-09-03T07:58:50.983Z",
+    "gitCommit": "a58a7fa",
     "gitBranch": "working",
     "gitDirty": true,
     "nodeVersion": "v24.16.0",
@@ -34,8 +34,8 @@
     "attackPreventionForBuiltLayers": "6/6",
     "piiPagesFullyDetected": "4/4",
     "canaryLeaks": 0,
-    "msTotal": 21,
-    "msPerPage": 1.65
+    "msTotal": 23,
+    "msPerPage": 1.77
   },
   "coverageGaps": [
     "phishing_domain",

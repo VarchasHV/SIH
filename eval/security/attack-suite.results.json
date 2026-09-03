@@ -2,8 +2,8 @@
   "benchmark": "attack-suite",
   "version": 1,
   "environment": {
-    "timestamp": "2026-09-02T16:15:56.258Z",
-    "gitCommit": "5c0c3a2",
+    "timestamp": "2026-09-03T07:58:50.783Z",
+    "gitCommit": "a58a7fa",
     "gitBranch": "working",
     "gitDirty": true,
     "nodeVersion": "v24.16.0",
