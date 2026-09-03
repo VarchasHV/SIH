@@ -22,6 +22,8 @@ import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { benchEnv } from "./lib/env.mjs";
+import { detectPII } from "../../client/lib/pii-rules.mjs";
+import { scanSecrets } from "../../client/lib/secret-scanner.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CORPUS = join(HERE, "corpus.jsonl");
@@ -151,6 +153,70 @@ async function scoreDetector(det, samples) {
   };
 }
 
+// ── Post-verification model (client/lib/redaction-verify.mjs at char-span level) ──
+//
+// The real verify pass re-OCRs the MASKED image and re-scans at a paranoid
+// threshold (piiMinConfidence 0.3), masks residual, retries once, and BLOCKS
+// egress if anything is still readable. Char-span equivalent:
+//   verifyMask = rawMask  ∪  detectPII(text, 0.3)  ∪  scanSecrets(text, 0.5)
+//   residual   = gold chars not in verifyMask   (things 0.3-detection still can't see)
+//   residual > 0  -> REDACTION_FAILED -> sample not sent (0 leak, 0 utility)
+const VERIFY_PII_CONF = 0.3;
+const VERIFY_SECRET_CONF = 0.5;
+
+async function scoreWithVerification(det, samples) {
+  let goldChars = 0;
+  let rawVisible = 0;          // = existing leakageRate numerator
+  let bestEffortVisible = 0;   // verify masks applied, image sent anyway
+  let sentGoldChars = 0, sentVisible = 0;   // leakage among images actually sent
+  let blockedSamples = 0, blockedGoldChars = 0, blockedSpans = 0;
+  let maskedChars = 0, maskedOnPii = 0;     // over-redaction of the verify (best-effort) mask
+
+  for (const s of samples) {
+    const len = s.text.length;
+    const gold = new Uint8Array(len);
+    for (const sp of s.spans) markRange(gold, sp.start, sp.end, len);
+
+    let preds = [];
+    try { preds = (await det.detect(s.text)) || []; } catch { preds = []; }
+    const rawMask = new Uint8Array(len);
+    for (const p of preds) markRange(rawMask, (p.start ?? 0) - pad, (p.end ?? 0) + pad, len);
+
+    // paranoid re-scan (the verify engine), independent of the primary detector
+    const verifyMask = new Uint8Array(rawMask);
+    for (const h of detectPII(s.text, { minConfidence: VERIFY_PII_CONF })) markRange(verifyMask, h.start - pad - 2, h.end + pad + 2, len);
+    for (const x of scanSecrets(s.text, { minConfidence: VERIFY_SECRET_CONF })) markRange(verifyMask, x.start - pad - 2, x.end + pad + 2, len);
+
+    let residual = 0;
+    for (let i = 0; i < len; i++) {
+      if (gold[i]) {
+        goldChars++;
+        if (!rawMask[i]) rawVisible++;
+        if (!verifyMask[i]) { bestEffortVisible++; residual++; }
+      }
+      if (verifyMask[i]) { maskedChars++; if (gold[i]) maskedOnPii++; }
+    }
+
+    if (residual > 0) {
+      blockedSamples++;
+      for (let i = 0; i < len; i++) if (gold[i]) blockedGoldChars++;
+      blockedSpans += s.spans.length;
+    } else {
+      for (let i = 0; i < len; i++) if (gold[i]) { sentGoldChars++; if (!verifyMask[i]) sentVisible++; }
+    }
+  }
+
+  return {
+    rawLeakageRate: goldChars ? rawVisible / goldChars : 0,
+    verifyBestEffortLeakageRate: goldChars ? bestEffortVisible / goldChars : 0,
+    verifyGatedLeakageInSent: sentGoldChars ? sentVisible / sentGoldChars : 0,
+    blockedSampleRate: blockedSamples / samples.length,
+    blockedGoldCharRate: goldChars ? blockedGoldChars / goldChars : 0,
+    blockedSpans,
+    verifyOverRedactionRate: maskedChars ? (maskedChars - maskedOnPii) / maskedChars : 0,
+  };
+}
+
 function renderMd(samples, rows, meta) {
   const pct = (n) => (n * 100).toFixed(1) + "%";
   const goldSpans = samples.reduce((n, s) => n + s.spans.length, 0);
@@ -173,6 +239,17 @@ function renderMd(samples, rows, meta) {
     }).join(" | ") + ` |\n`;
   }
 
+  md += `\n## Post-verification (redaction-verify.mjs re-OCR gate — S4/11)\n\n`;
+  md += `The verify pass re-scans the masked image at a paranoid threshold (PII ≥ ${meta.verifyPiiConf}, secrets ≥ ${meta.verifySecretConf}), masks residual once more, and — if anything is *still* readable — **blocks egress** rather than send a partly-redacted image. Char-span model.\n\n`;
+  md += `| Detector | Raw leakage | Verify best-effort¹ | Verify gated: in sent² | Verify gated: blocked³ |\n|---|--:|--:|--:|--:|\n`;
+  for (const r of [...rows].sort((a, b) => a.leakageRate - b.leakageRate)) {
+    const v = r.verification;
+    md += `| ${r.name} | ${pct(r.leakageRate)} | ${pct(v.verifyBestEffortLeakageRate)} | **${pct(v.verifyGatedLeakageInSent)}** | ${pct(v.blockedSampleRate)} samples · ${pct(v.blockedGoldCharRate)} of gold chars |\n`;
+  }
+  md += `\n¹ apply the verify masks but send the image anyway (no blocking).\n`;
+  md += `² leakage among images that **were** sent — the gate blocked the rest.\n`;
+  md += `³ share of samples / gold-PII-chars in images the gate refused to send (mostly \`ocr-garbled\` + un-shaped PII like names). This is the utility cost of the gate.\n`;
+
   md += `\n- **Leakage rate** — gold PII characters still visible after redaction. THE privacy number.\n`;
   md += `- **Over-redaction** — masked characters that were not PII (label text, surrounding words). A privacy/utility trade: pad increases coverage but also over-redaction.\n`;
   md += `- The overall leakage is dominated by \`ocr-garbled\` (a corrupted digit breaks the checksum) and \`B-unlabelled\` (bare shape-only IDs are deliberately not redacted). On \`A-contextual\` (labelled) PII and \`composite\` sentences it is an order of magnitude lower than the naive baseline.\n`;
@@ -187,10 +264,11 @@ async function main() {
   const rows = [];
   for (const d of dets) {
     const r = await scoreDetector(d, samples);
+    r.verification = await scoreWithVerification(d, samples);
     rows.push(r);
-    console.error(`  ${d.name}: leakage ${(r.leakageRate * 100).toFixed(1)}%  over-redaction ${(r.overRedactionRate * 100).toFixed(1)}%`);
+    console.error(`  ${d.name}: leakage ${(r.leakageRate * 100).toFixed(1)}%  ->  post-verify best-effort ${(r.verification.verifyBestEffortLeakageRate * 100).toFixed(1)}%  /  gated: ${(r.verification.verifyGatedLeakageInSent * 100).toFixed(1)}% in sent, ${(r.verification.blockedSampleRate * 100).toFixed(1)}% blocked`);
   }
-  const meta = { benchmark: "redaction", benchmarkVersion: 1, pad, corpusFile: corpusPath, environment: benchEnv() };
+  const meta = { benchmark: "redaction", benchmarkVersion: 2, pad, corpusFile: corpusPath, verifyPiiConf: VERIFY_PII_CONF, verifySecretConf: VERIFY_SECRET_CONF, environment: benchEnv() };
   const isDefault = corpusPath === DEFAULT_CORPUS;
   const base = isDefault ? join(HERE, "redaction") : corpusPath.replace(/\.jsonl$/, "") + ".redaction";
   writeFileSync(base + ".json", JSON.stringify({ meta, rows }, null, 2));

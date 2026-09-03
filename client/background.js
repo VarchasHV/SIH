@@ -210,6 +210,25 @@ async function runAgentTask(opts) {
     });
     if (!vis?.ok) throw new Error("vision failed: " + (vis?.error || "unknown"));
 
+    // 3b. REDACTION VERIFICATION GATE — re-OCR of the masked screenshot found
+    //     PII/secrets still readable after one re-mask pass. Do NOT send a
+    //     partially-redacted image to the VLM.
+    emit({
+      type: "redaction-verified", step,
+      verified: vis.redactionVerified !== false,
+      status: vis.redactionStatus || "SKIPPED",
+      repasses: vis.stats?.redaction?.repasses ?? 0,
+      residualCategories: vis.redactionResidual ? [...new Set(vis.redactionResidual.map((r) => r.category || r.subtype || r.kind))] : [],
+    });
+    if (vis.redactionVerified === false) {
+      emit({
+        type: "error", step, where: "redaction verification", retryable: false,
+        message: `BLOCKED: the screenshot still shows ${(vis.stats?.redaction?.residualCategories || ["PII"]).join(", ")} after re-masking. Nothing was sent.`,
+      });
+      history.push({ step, error: `redaction verification failed: ${(vis.stats?.redaction?.residualCategories || []).join(",")}` });
+      break;
+    }
+
     // show the user what was redacted, on the page
     send(tabId, { action: "PL_HIGHLIGHT", regions: vis.redactedRegions.map((r) => ({ ...r, deviceCoords: true })), kind: "redact" }).catch(() => {});
 

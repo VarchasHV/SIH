@@ -1,12 +1,14 @@
 {
   "meta": {
     "benchmark": "redaction",
-    "benchmarkVersion": 1,
+    "benchmarkVersion": 2,
     "pad": 0,
     "corpusFile": "/Users/manas/SIH/eval/bench/corpus.jsonl",
+    "verifyPiiConf": 0.3,
+    "verifySecretConf": 0.5,
     "environment": {
-      "timestamp": "2026-09-03T07:58:51.213Z",
-      "gitCommit": "a58a7fa",
+      "timestamp": "2026-09-03T08:37:27.316Z",
+      "gitCommit": "74d1783",
       "gitBranch": "working",
       "gitDirty": true,
       "nodeVersion": "v24.16.0",
@@ -95,7 +97,16 @@
           "goldChars": 4262
         }
       },
-      "msPerSample": 0.005
+      "msPerSample": 0.005,
+      "verification": {
+        "rawLeakageRate": 0.1472526158445441,
+        "verifyBestEffortLeakageRate": 0.09332137518684604,
+        "verifyGatedLeakageInSent": 0,
+        "blockedSampleRate": 0.06529411764705882,
+        "blockedGoldCharRate": 0.09568908819133035,
+        "blockedSpans": 561,
+        "verifyOverRedactionRate": 0.2603262248063528
+      }
     }
   ]
 }

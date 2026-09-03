@@ -11,6 +11,7 @@ import { mergeDetections, redundancyStats } from "./merge.mjs";
 import { associateLabels } from "./label-assoc.mjs";
 import { detectObjects, visionModelInfo } from "./vision-transformer.mjs";
 import { detectPromptInjection } from "./adversarial-guard.mjs";
+import { verifyRedaction } from "./redaction-verify.mjs";
 
 const getRuntimeUrl = (p) => {
   if (typeof chrome !== "undefined" && chrome.runtime?.getURL) {
@@ -91,10 +92,11 @@ async function loadBitmap(dataURL) {
   return { width: 1, height: 1 };
 }
 
-async function runOCR(bitmap) {
-  const t0 = performance.now();
+// OCR any source Tesseract.js accepts (ImageBitmap, canvas, ImageData, dataURL)
+// -> [{ text, bbox:{x0,y0,x1,y1} }]. Reuses the single shared worker.
+async function ocrLines(source, fallbackW = 1, fallbackH = 1) {
   const worker = await getOcrWorker();
-  const { data } = await worker.recognize(bitmap, {}, { text: true, blocks: true });
+  const { data } = await worker.recognize(source, {}, { text: true, blocks: true });
   const lines = [];
   const pushLine = (l) => l && l.bbox && lines.push({ text: l.text || "", bbox: l.bbox });
   if (Array.isArray(data.lines)) {
@@ -105,8 +107,14 @@ async function runOCR(bitmap) {
     }
   }
   if (!lines.length && data.text) {
-    lines.push({ text: data.text, bbox: { x0: 0, y0: 0, x1: bitmap.width, y1: bitmap.height } });
+    lines.push({ text: data.text, bbox: { x0: 0, y0: 0, x1: fallbackW, y1: fallbackH } });
   }
+  return lines;
+}
+
+async function runOCR(bitmap) {
+  const t0 = performance.now();
+  const lines = await ocrLines(bitmap, bitmap.width, bitmap.height);
   const dets = [];
   for (const line of lines) {
     // 1. Scan for PII text
@@ -152,7 +160,7 @@ async function runFaces(bitmap) {
   return { dets, ms: performance.now() - t0, available: true };
 }
 
-export async function processVision({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "blackout", a11yStats = null, forceVision = false, visionStageBaselineMs = null }) {
+export async function processVision({ screenshot, domPiiBoxes = [], fields = [], dpr = 1, mode = "blackout", a11yStats = null, forceVision = false, visionStageBaselineMs = null, skipVerify = false }) {
   const timings = {};
   const tAll = performance.now();
 
@@ -253,6 +261,26 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
   const applied = redactCanvas(canvas, regions, { mode });
   timings.redactMs = Math.round(performance.now() - tRedact);
 
+  // ── REDACTION VERIFICATION GATE (S4/11) ─────────────────────────────────
+  // Re-OCR the masked canvas and re-scan. Residual PII/secrets -> grow boxes
+  // and mask once more; still leaking -> REDACTION_FAILED and the caller must
+  // NOT send the image. Skipped only when nothing was masked on a fast-path
+  // step (a11y tree already asserted no unlabelled content) or OCR is absent.
+  let verify = { verified: true, status: "SKIPPED", passes: 0, residual: [], residualCategories: [], addedRegions: [], ocrLines: 0, ms: 0 };
+  const doVerify = !skipVerify && (regions.length > 0 || !useFastPath);
+  if (doVerify) {
+    try {
+      verify = await verifyRedaction(canvas, applied.regions, {
+        ocr: (c) => ocrLines(c, canvas.width, canvas.height),
+      });
+    } catch (e) {
+      // a verification error is a fail-closed condition — we could not confirm
+      // the image is clean, so treat it as unverified.
+      verify = { verified: false, status: "REDACTION_FAILED", passes: 0, residual: [], residualCategories: ["verify-error"], addedRegions: [], ocrLines: 0, ms: 0, error: e.message };
+    }
+  }
+  timings.verifyMs = verify.ms;
+
   let redactedDataURL;
   if (typeof canvas.convertToBlob === "function") {
     const blob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.82 });
@@ -269,6 +297,10 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
 
   return {
     redactedDataURL,
+    redactionVerified: verify.verified,
+    redactionStatus: verify.status,
+    // metadata only — category / masked evidence, never a raw value
+    redactionResidual: verify.residual,
     detections: merged.map((m) => ({
       category: m.category,
       confidence: Number(m.confidence.toFixed(2)),
@@ -280,7 +312,10 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
       fieldId: m.fieldId,
     })),
     fieldCategories,
-    redactedRegions: applied.regions.map((r) => ({ ...roundBox(r), mode: r.mode, category: r.category })),
+    redactedRegions: [
+      ...applied.regions.map((r) => ({ ...roundBox(r), mode: r.mode, category: r.category })),
+      ...verify.addedRegions.map((r) => ({ ...roundBox(r), mode: "blackout", category: r.category || "verify_residual" })),
+    ],
     stats: {
       ...redundancyStats(merged),
       ocrLines: ocr.lineCount,
@@ -288,6 +323,13 @@ export async function processVision({ screenshot, domPiiBoxes = [], fields = [],
       faceDetectorAvailable: faces.available,
       ocrError: ocr.error || null,
       faceError: faces.error || null,
+      redaction: {
+        verified: verify.verified,
+        status: verify.status,
+        repasses: verify.passes,
+        addedRegions: verify.addedRegions.length,
+        residualCategories: verify.residualCategories,
+      },
       vit: {
         ...visionModelInfo(),
         available: vit.available,

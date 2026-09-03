@@ -282,6 +282,7 @@ function showEgress(evt) {
   $("#egress-stats").textContent =
     `step ${evt.step} · OCR ${t.ocrMs ?? "?"}ms · faces ${t.faceMs ?? "?"}ms · ViT ${t.vitMs ?? "?"}ms · blackout ${t.redactMs ?? "?"}ms · total ${t.totalMs ?? "?"}ms\n` +
     `hybrid mode: ${t.a11yBypassed ? "A11y Fast-Path" : "Vision Fallback"} · regions blacked out: ${s.total ?? 0} · ocr lines: ${s.ocrLines ?? 0}\n` +
+    `redaction: ${s.redaction ? (s.redaction.verified ? `verified${s.redaction.repasses ? ` (+${s.redaction.addedRegions} residual box${s.redaction.addedRegions === 1 ? "" : "es"})` : ""}` : `FAILED — ${(s.redaction.residualCategories || []).join(", ")}`) : "not verified"} · verify ${t.verifyMs ?? "?"}ms\n` +
     `fields named by vision: ${s.visionLabelledFields ?? 0} · face model: ${s.faceDetectorAvailable ? "on" : "off"}${alerts.length ? ` · 🛡️ threats quarantined: ${alerts.length}` : ""}\n` +
     vitLine;
   $("#egress-json").textContent = JSON.stringify(evt.payloadPreview, null, 1);
@@ -331,6 +332,13 @@ chrome.runtime.onMessage.addListener((m) => {
       log(`goal scrubbed before egress (${e.hits.join(", ")}); sent: "${e.sanitized}"`, "err");
       break;
     case "egress": showEgress(e); log(`censored with black boxes (step ${e.step})`); break;
+    case "redaction-verified":
+      if (e.verified) {
+        log(`✓ redaction verified${e.repasses ? ` (re-masked ${e.repasses}× to clear residual ${e.residualCategories.join(", ")})` : ""}`, "ok");
+      } else {
+        log(`🚨 redaction FAILED — screenshot still shows ${e.residualCategories.join(", ") || "PII"} after re-masking · image NOT sent`, "err");
+      }
+      break;
     case "egress-redacted":
       log(`🛡️ egress gate redacted ${e.total} PII item(s) before sending: ${Object.entries(e.byCategory).map(([k, v]) => `${k}×${v}`).join(", ")}`, "err");
       break;
