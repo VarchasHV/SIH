@@ -125,9 +125,9 @@
     <ol id="box-list" class="box-list"><li class="empty">No scan yet.</li></ol>
   </section>
 
-  <!-- PROFILE (Only non-sensitive fields; all censored/sensitive fields removed) -->
+  <!-- PROFILE (Local storage for form-filling profile data) -->
   <section class="panel" id="tab-profile">
-    <p class="hint">Stored only locally. All sensitive/censored fields (Aadhaar, PAN, Card, CVV, Passwords, Bank Info, Govt ID) have been removed and are strictly blocked from being filled.</p>
+    <p class="hint">Stored strictly locally on your device. Identity documents (Aadhaar, PAN, Passport, Voter ID) are never sent to remote VLMs in plaintext — the agent references them via secure local tokens and types them directly in the browser.</p>
     <div id="profile-fields"></div>
     <button class="scan-button" id="save-profile" type="button">Save profile</button>
     <p class="saved-note" id="saved-note" aria-live="polite"></p>

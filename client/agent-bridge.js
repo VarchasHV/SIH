@@ -11,15 +11,87 @@
 
   const RESTRICTED_PII_CATEGORIES = window.__PL.RESTRICTED_PII_CATEGORIES || window.__PL.CENSORED_CATEGORIES;
 
+  const CANONICAL_CATEGORIES = {
+    // Aadhaar aliases
+    aadhaar: "aadhaar",
+    aadhaarnumber: "aadhaar",
+    aadhar: "aadhaar",
+    aadharnumber: "aadhaar",
+    uidai: "aadhaar",
+    uid: "aadhaar",
+
+    // PAN aliases
+    pan: "pan",
+    pannumber: "pan",
+    pancard: "pan",
+
+    // Passport aliases
+    passport: "passport",
+    passportnumber: "passport",
+    passportno: "passport",
+    passportin: "passport",
+
+    // Voter ID / Government ID aliases
+    voterid: "voterid",
+    voter: "voterid",
+    voteridcard: "voterid",
+    epic: "voterid",
+    epicno: "voterid",
+    epicnumber: "voterid",
+    governmentid: "voterid",
+    govtid: "voterid",
+    nationalid: "voterid",
+
+    // Standard profile fields
+    fullname: "fullname",
+    name: "fullname",
+    firstname: "firstname",
+    fname: "firstname",
+    lastname: "lastname",
+    lname: "lastname",
+    surname: "lastname",
+    email: "email",
+    emailaddress: "email",
+    phonenumber: "phone",
+    phone: "phone",
+    mobile: "phone",
+    dateofbirth: "dob",
+    dob: "dob",
+    birthdate: "dob",
+    address: "address",
+    streetaddress: "address",
+    postalzipcode: "zipcode",
+    postalcode: "zipcode",
+    zipcode: "zipcode",
+    zip: "zipcode",
+    pincode: "zipcode",
+  };
+
   function resolveProfileValue(profile = {}, category = "") {
     if (!category || !profile) return null;
-    if (profile[category]) return profile[category];
-    const normCat = String(category).toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (profile[category] != null && profile[category] !== "") return profile[category];
+
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const normCat = norm(category);
+    if (!normCat) return null;
+
+    // Direct normalized key match
     for (const k of Object.keys(profile)) {
-      if (String(k).toLowerCase().replace(/[^a-z0-9]/g, "") === normCat) {
+      if (norm(k) === normCat && profile[k] != null && profile[k] !== "") {
         return profile[k];
       }
     }
+
+    // Canonical alias match
+    const canonCat = CANONICAL_CATEGORIES[normCat];
+    if (canonCat) {
+      for (const k of Object.keys(profile)) {
+        if (CANONICAL_CATEGORIES[norm(k)] === canonCat && profile[k] != null && profile[k] !== "") {
+          return profile[k];
+        }
+      }
+    }
+
     return null;
   }
 

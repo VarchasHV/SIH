@@ -59,6 +59,8 @@ function profileKeyCategory(key) {
   const s = String(key).toLowerCase();
   if (/aadhaar|aadhar|uid/.test(s)) return "aadhaar";
   if (/\bpan\b/.test(s)) return "pan";
+  if (/passport/.test(s)) return "passport number";
+  if (/voter|epic/.test(s)) return "voter id";
   if (/card/.test(s)) return "credit-card";
   if (/ssn|social security/.test(s)) return "ssn";
   if (/password|passcode/.test(s)) return "password";

@@ -11,7 +11,7 @@ document.querySelectorAll(".tab").forEach((t) => {
   });
 });
 
-// ---- profile (ONLY non-sensitive fields; all censored fields stripped) ----
+// ---- profile (Identity & contact fields; stored strictly on-device) ----
 // [key, placeholder, kind?]. `kind: "date"` is stored canonically as an ISO
 // yyyy-MM-dd string but shown to the user as "14 Mar 1998" to kill the
 // DD/MM vs MM/DD ambiguity.
@@ -24,6 +24,10 @@ const PROFILE_FIELDS = [
   ["date of birth", "14 Mar 1998", "date"],
   ["address", "42 Nehru Road, Bengaluru"],
   ["postal/ZIP code", "560001"],
+  ["Aadhaar number", "2345 6789 0123"],
+  ["PAN", "ABCDE1234F"],
+  ["Passport number", "A1234567"],
+  ["Voter ID", "ABC1234567"],
 ];
 const DATE_KEYS = new Set(PROFILE_FIELDS.filter(([, , k]) => k === "date").map(([key]) => key));
 
@@ -87,7 +91,9 @@ if (saveBtn) {
           i.value = formatDateHuman(iso); // reflect the canonical value back
         }
       } else {
-        profile[key] = raw;
+        const val = ["PAN", "Passport number", "Voter ID"].includes(key) ? raw.toUpperCase() : raw;
+        profile[key] = val;
+        i.value = val;
       }
     });
     if (badDate) {
