@@ -222,25 +222,16 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Initial scan
-  // ═══════════════════════════════════════════════════════════════════════
-
-  let initialCount = 0;
-  if (document.body) {
-    initialCount = redactTextNodes(document.body);
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════
-  // MutationObserver for SPA / dynamic content
+  // MutationObserver & On-Demand Lifecycle (explicit activation only)
   // ═══════════════════════════════════════════════════════════════════════
 
   let mutationTimer = null;
   const pendingNodes = new Set();
+  let observer = null;
 
   function processPendingMutations() {
     mutationTimer = null;
     for (const node of pendingNodes) {
-      // Check the node is still in the document
       if (node.isConnected) {
         redactTextNodes(node);
       }
@@ -248,63 +239,88 @@
     pendingNodes.clear();
   }
 
-  const observer = new MutationObserver((mutations) => {
-    let needsWork = false;
-
-    for (const record of mutations) {
-      if (record.type === "childList") {
-        for (const added of record.addedNodes) {
-          if (added.nodeType === Node.ELEMENT_NODE) {
-            // Skip our own overlay / redacted markers
-            if (added.id === "__pl_overlay") continue;
-            pendingNodes.add(added);
-            needsWork = true;
-          } else if (added.nodeType === Node.TEXT_NODE) {
-            pendingNodes.add(added);
-            needsWork = true;
+  function startDomRedactor(root = document.body) {
+    const count = root ? redactTextNodes(root) : 0;
+    if (!observer && root && typeof MutationObserver !== "undefined") {
+      observer = new MutationObserver((mutations) => {
+        let needsWork = false;
+        for (const record of mutations) {
+          if (record.type === "childList") {
+            for (const added of record.addedNodes) {
+              if (added.nodeType === Node.ELEMENT_NODE) {
+                if (added.id === "__pl_overlay") continue;
+                pendingNodes.add(added);
+                needsWork = true;
+              } else if (added.nodeType === Node.TEXT_NODE) {
+                pendingNodes.add(added);
+                needsWork = true;
+              }
+            }
+          } else if (record.type === "characterData") {
+            const target = record.target;
+            if (target.nodeType === Node.TEXT_NODE) {
+              const parent = target.parentElement;
+              if (parent && parent.hasAttribute(REDACTED_ATTR)) {
+                parent.removeAttribute(REDACTED_ATTR);
+              }
+              pendingNodes.add(target);
+              needsWork = true;
+            }
           }
         }
-      } else if (record.type === "characterData") {
-        const target = record.target;
-        if (target.nodeType === Node.TEXT_NODE) {
-          // Clear the redacted flag so we can re-process
-          const parent = target.parentElement;
-          if (parent && parent.hasAttribute(REDACTED_ATTR)) {
-            parent.removeAttribute(REDACTED_ATTR);
-          }
-          pendingNodes.add(target);
-          needsWork = true;
+        if (needsWork && !mutationTimer) {
+          mutationTimer = setTimeout(processPendingMutations, 150);
         }
-      }
-    }
+      });
 
-    if (needsWork && !mutationTimer) {
-      mutationTimer = setTimeout(processPendingMutations, 150);
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
     }
-  });
+    return count;
+  }
 
-  if (document.body) {
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
+  function stopDomRedactor() {
+    if (observer) {
+      observer.disconnect();
+      observer = null;
+    }
+    if (mutationTimer) {
+      clearTimeout(mutationTimer);
+      mutationTimer = null;
+    }
+    pendingNodes.clear();
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // Message listener — allow background/popup to trigger a full re-scan
+  // Message listener — allow background/popup to trigger a scan or lifecycle
   // ═══════════════════════════════════════════════════════════════════════
 
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-    if (msg.action === "PL_REDACT_SCAN") {
-      const count = document.body ? redactTextNodes(document.body) : 0;
-      sendResponse({ ok: true, redactedNodes: count });
-      return true;
-    }
-  });
+  if (typeof chrome !== "undefined" && chrome.runtime?.onMessage?.addListener) {
+    chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+      if (msg.action === "PL_REDACT_SCAN") {
+        const count = document.body ? redactTextNodes(document.body) : 0;
+        sendResponse({ ok: true, redactedNodes: count });
+        return true;
+      }
+      if (msg.action === "PL_START_DOM_REDACTOR") {
+        const count = startDomRedactor(document.body);
+        sendResponse({ ok: true, redactedNodes: count });
+        return true;
+      }
+      if (msg.action === "PL_STOP_DOM_REDACTOR") {
+        stopDomRedactor();
+        sendResponse({ ok: true });
+        return true;
+      }
+    });
+  }
 
-  // Expose for testing / other content scripts
+  // Expose for testing / programmatic callers
   window.__PL = window.__PL || {};
   window.__PL.redactTextNodes = redactTextNodes;
-  window.__PL.redactStats = { initialCount };
+  window.__PL.startDomRedactor = startDomRedactor;
+  window.__PL.stopDomRedactor = stopDomRedactor;
 })();

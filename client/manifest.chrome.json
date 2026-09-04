@@ -28,8 +28,7 @@
         "content.js",
         "skeleton.js",
         "executor.js",
-        "agent-bridge.js",
-        "dom-redactor.js"
+        "agent-bridge.js"
       ],
       "run_at": "document_idle"
     }
