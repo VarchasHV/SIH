@@ -3,13 +3,7 @@
   "name": "CONNOR — Vision Agent",
   "version": "0.2.0",
   "description": "On-device vision agent: reads the screen, redacts PII locally, and lets a server VLM drive form-filling without ever seeing your data.",
-  "browser_specific_settings": {
-    "gecko": {
-      "id": "connor@sih2026.org",
-      "strict_min_version": "109.0"
-    }
-  },
-  "permissions": ["activeTab", "scripting", "storage", "tabs"],
+  "permissions": ["activeTab", "scripting", "storage", "offscreen", "tabs"],
   "host_permissions": [
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*",
@@ -20,7 +14,7 @@
     "default_popup": "popup.html"
   },
   "background": {
-    "scripts": ["background.js"],
+    "service_worker": "background.js",
     "type": "module"
   },
   "content_scripts": [
