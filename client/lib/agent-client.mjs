@@ -36,22 +36,43 @@ export function validatePlan(actions, knownIds) {
 /**
  * @param {string} serverUrl  - e.g. http://localhost:8000
  * @param {object} payload    - { taskGoal, step, skeleton, tokenMap, screenshot, history }
- * @param {{timeoutMs?:number}} opts
+ * @param {{timeoutMs?:number, accessToken?:string, sessionId?:string}} opts
  */
 export async function requestStep(serverUrl, payload, opts = {}) {
-  const { timeoutMs = 45000 } = opts;
+  const { timeoutMs = 45000, accessToken = null, sessionId = null } = opts;
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   const started = performance.now();
   try {
+    const headers = { "content-type": "application/json" };
+    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+    if (sessionId) headers["x-session-id"] = sessionId;
     const res = await fetch(`${serverUrl.replace(/\/$/, "")}/agent/step`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
       signal: ctl.signal,
     });
     if (!res.ok) {
-      const errText = (await res.text()).slice(0, 200);
+      let body = null;
+      try { body = await res.json(); } catch { /* not JSON */ }
+      const detail = body?.detail;
+      // Structured entitlement/usage rejection — the server is authoritative
+      // here; the client only surfaces what it said, never overrides it.
+      if (res.status === 402 || (res.status === 403 && detail?.error === "upgrade_required")) {
+        const err = new Error(detail?.message || "Upgrade required.");
+        err.isUpgradeRequired = true;
+        err.status = res.status;
+        err.detail = detail;
+        throw err;
+      }
+      if (res.status === 401) {
+        const err = new Error("Not authenticated.");
+        err.isAuthRequired = true;
+        err.status = res.status;
+        throw err;
+      }
+      const errText = typeof detail === "string" ? detail : JSON.stringify(detail || body || "").slice(0, 200);
       const err = new Error(`HTTP ${res.status}: ${errText}`);
       err.isServerError = true;
       err.status = res.status;
@@ -71,7 +92,7 @@ export async function requestStep(serverUrl, payload, opts = {}) {
       timeoutErr.isTimeout = true;
       throw timeoutErr;
     }
-    if (!err.isServerError) {
+    if (!err.isServerError && !err.isUpgradeRequired && !err.isAuthRequired) {
       err.isNetworkError = true;
     }
     throw err;

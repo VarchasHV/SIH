@@ -1,8 +1,17 @@
 fastapi>=0.110
 uvicorn[standard]>=0.27
+python-multipart>=0.0.9  # required for the mock checkout form POST
 pydantic>=2.6
 python-dotenv>=1.0
 httpx>=0.27            # gemini adapter
 certifi>=2024.0       # CA bundle for httpx on macOS
 # optional - only for VLM_MODE=openai
 openai>=1.30
+
+# --- auth / entitlements / billing ---
+sqlalchemy>=2.0
+alembic>=1.13
+pyjwt>=2.8
+bcrypt>=4.1
+# optional - only for BILLING_PROVIDER=stripe
+stripe>=9.0

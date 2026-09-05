@@ -1,0 +1,50 @@
+{
+  "EXPLORER": {
+    "label": "Explorer",
+    "tagline": "Experience browser perception.",
+    "price_monthly_usd": 0,
+    "features": ["BASIC_VISION", "BASIC_AGENT"],
+    "limits": {
+      "agent_step": { "period": "day", "limit": 15 }
+    }
+  },
+  "OPERATOR": {
+    "label": "Operator",
+    "tagline": "Deploy serious agentic workflows.",
+    "price_monthly_usd": 12,
+    "features": [
+      "BASIC_VISION",
+      "ADVANCED_VISION",
+      "BASIC_AGENT",
+      "ADVANCED_AGENT",
+      "SECURITY_ANALYSIS",
+      "WORKFLOW_HISTORY",
+      "EXPORT_REPORTS"
+    ],
+    "limits": {
+      "agent_step": { "period": "month", "limit": 2000 }
+    }
+  },
+  "COMMAND": {
+    "label": "Command",
+    "tagline": "Operate at organization scale.",
+    "price_monthly_usd": null,
+    "features": [
+      "BASIC_VISION",
+      "ADVANCED_VISION",
+      "BASIC_AGENT",
+      "ADVANCED_AGENT",
+      "SECURITY_ANALYSIS",
+      "WORKFLOW_HISTORY",
+      "EXPORT_REPORTS",
+      "TEAM_MANAGEMENT",
+      "USAGE_ANALYTICS",
+      "AUDIT_LOG",
+      "POLICY_ENFORCEMENT",
+      "API_ACCESS"
+    ],
+    "limits": {
+      "agent_step": { "period": "month", "limit": 10000 }
+    }
+  }
+}

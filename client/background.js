@@ -14,6 +14,8 @@
 
 import { requestStep, validatePlan } from "./lib/agent-client.mjs";
 import { requestCloudStep, CloudAuthError } from "./lib/cloud-agent-client.mjs";
+import { getAccessToken } from "./lib/auth-client.mjs";
+import { consumeUsage } from "./lib/entitlement-client.mjs";
 import { SENSITIVE_PATTERNS, CENSORED_CATEGORIES, isRestrictedCategory, isSensitiveCategory } from "./lib/sensitive-fields.mjs";
 import { generateDPDPAuditReport } from "./lib/dpdp-audit.mjs";
 import { sanitizeTaskGoal } from "./lib/dlp-heuristics.mjs";
@@ -177,6 +179,7 @@ async function runAgentTask(opts) {
   await ensureVisionEngine();
   const history = [];
   let sanitizedPayloadForPreview = null;
+  const sessionId = (crypto.randomUUID && crypto.randomUUID()) || `sess-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
   // ---- convergence trackers ----
   const filledOk = new Set();          // targetIds we successfully filled + verified
@@ -378,6 +381,25 @@ async function runAgentTask(opts) {
     };
 
     if (cloudSettings.aiApiKey) {
+      // Bring-your-own-key direct-to-cloud path bypasses /agent/step entirely,
+      // so it has its own metering checkpoint — without this, switching to
+      // "cloud mode" would silently bypass all server-side usage limits.
+      try {
+        await consumeUsage(cfg.serverUrl, "agent_step");
+      } catch (e) {
+        if (e.isAuthRequired || e.status === 401) {
+          emit({ type: "auth-required", step, message: "Sign in to use CONNOR." });
+          history.push({ step, error: "authentication required" });
+          break;
+        }
+        if (e.status === 402) {
+          emit({ type: "upgrade-required", step, detail: e.detail, message: e.message });
+          history.push({ step, error: `usage limit reached: ${e.message}` });
+          break;
+        }
+        emit({ type: "error", step, where: "usage metering", message: e.message, retryable: true, aiUnavailable: true });
+        break;
+      }
       try {
         plan = await requestCloudStep(cloudSettings, payload);
       } catch (e) {
@@ -405,9 +427,27 @@ async function runAgentTask(opts) {
         break;
       }
     } else {
+      let accessToken;
       try {
-        plan = await requestStep(cfg.serverUrl, payload);
+        accessToken = await getAccessToken(cfg.serverUrl);
       } catch (e) {
+        emit({ type: "auth-required", step, message: "Sign in to use CONNOR." });
+        history.push({ step, error: "authentication required" });
+        break;
+      }
+      try {
+        plan = await requestStep(cfg.serverUrl, payload, { accessToken, sessionId });
+      } catch (e) {
+        if (e.isUpgradeRequired) {
+          emit({ type: "upgrade-required", step, detail: e.detail, message: e.message });
+          history.push({ step, error: `usage limit reached: ${e.message}` });
+          break;
+        }
+        if (e.isAuthRequired) {
+          emit({ type: "auth-required", step, message: "Sign in to use CONNOR." });
+          history.push({ step, error: "authentication required" });
+          break;
+        }
         const aiDown = e.status === 503;
         const where = e.isNetworkError ? "network (server offline)"
           : e.isTimeout ? "AI timed out"

@@ -1,14 +1,19 @@
 // Popup: profile editor (non-sensitive only) + agent control + activity/egress view.
 
+import * as authClient from "./lib/auth-client.mjs";
+import * as entitlementClient from "./lib/entitlement-client.mjs";
+
 const $ = (s) => document.querySelector(s);
 const statusDot = $("#status-dot");
 
 // ---- tabs -----------------------------------------------------------
+function switchToTab(name) {
+  document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x.dataset.tab === name));
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("is-active", p.id === `tab-${name}`));
+  if (name === "account") refreshAccountUI();
+}
 document.querySelectorAll(".tab").forEach((t) => {
-  t.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("is-active", x === t));
-    document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("is-active", p.id === `tab-${t.dataset.tab}`));
-  });
+  t.addEventListener("click", () => switchToTab(t.dataset.tab));
 });
 
 // ---- profile (Identity & contact fields; stored strictly on-device) ----
@@ -375,6 +380,14 @@ chrome.runtime.onMessage.addListener((m) => {
       }
       break;
     case "submit-skipped": log("submit skipped by user"); break;
+    case "auth-required":
+      log("sign-in required", "err");
+      switchToTab("account");
+      break;
+    case "upgrade-required":
+      log(`🔒 ${e.message || "Operator Mode required"}`, "err");
+      showUpgradeModal(e.detail);
+      break;
     case "done": log(`✔ task complete (step ${e.step})${e.reason ? ` — ${e.reason}` : ""}`, "ok"); break;
     case "cancelled": log("cancelled", "err"); break;
     case "finished":
@@ -597,4 +610,175 @@ $("#scan-button").addEventListener("click", () => {
 });
 
 loadProfile();
+
+// ---- account / entitlements / Operator Mode upgrade -----------------
+//
+// Everything here reads state FROM the server for display only. Signing in,
+// out, or forging chrome.storage never changes what the server will let a
+// request through — see auth-client.mjs / entitlement-client.mjs.
+
+function accountServerUrl() {
+  return ($("#serverUrl")?.value.trim() || "http://localhost:8000").replace(/\/$/, "");
+}
+
+const FEATURE_LABELS = {
+  BASIC_VISION: "Basic perception",
+  ADVANCED_VISION: "Advanced visual grounding",
+  BASIC_AGENT: "Basic agent",
+  ADVANCED_AGENT: "Persistent agent workflows",
+  SECURITY_ANALYSIS: "Security & DPDP analysis",
+  WORKFLOW_HISTORY: "Workflow history",
+  EXPORT_REPORTS: "Report export",
+};
+
+async function refreshAccountUI() {
+  const badge = $("#plan-badge");
+  const loggedIn = await authClient.isLoggedIn().catch(() => false);
+  if (!loggedIn) {
+    $("#account-signed-out").hidden = false;
+    $("#account-signed-in").hidden = true;
+    if (badge) { badge.textContent = "SIGN IN"; badge.className = "plan-badge"; }
+    return;
+  }
+
+  let snapshot;
+  try {
+    snapshot = await entitlementClient.fetchEntitlements(accountServerUrl());
+  } catch (e) {
+    if (e.status === 401) {
+      await authClient.clearAuth();
+      return refreshAccountUI();
+    }
+    $("#account-signed-out").hidden = false;
+    $("#account-signed-in").hidden = true;
+    if (badge) { badge.textContent = "OFFLINE"; badge.className = "plan-badge"; }
+    return;
+  }
+
+  $("#account-signed-out").hidden = true;
+  $("#account-signed-in").hidden = false;
+
+  const plan = snapshot.plan || "EXPLORER";
+  $("#account-plan-name").textContent = plan;
+  if (badge) { badge.textContent = plan; badge.className = `plan-badge plan-${plan.toLowerCase()}`; }
+
+  const step = snapshot.usage?.agent_step;
+  const usageRow = $("#account-usage-row");
+  if (step && step.limit != null) {
+    usageRow.hidden = false;
+    const pct = Math.min(100, Math.round((step.used / step.limit) * 100));
+    $("#account-usage-fill").style.width = `${pct}%`;
+    $("#account-usage-fill").classList.toggle("is-near-limit", pct >= 80);
+    $("#account-usage-label").textContent = `${step.used} / ${step.limit} analyses this ${step.period}`;
+  } else {
+    usageRow.hidden = true;
+  }
+
+  const grid = $("#account-feature-grid");
+  grid.replaceChildren();
+  for (const [feature, label] of Object.entries(FEATURE_LABELS)) {
+    const enabled = !!snapshot.features?.[feature];
+    const row = document.createElement("div");
+    row.className = `feature-row ${enabled ? "is-on" : "is-off"}`;
+    row.innerHTML = `<span class="feature-dot"></span><span>${label}</span>`;
+    grid.appendChild(row);
+  }
+
+  const isOperatorOrAbove = plan !== "EXPLORER";
+  $("#account-upgrade-btn").hidden = isOperatorOrAbove;
+  $("#account-cancel-btn").hidden = !isOperatorOrAbove || !!snapshot.subscription?.cancel_at_period_end;
+  $("#account-note").textContent = snapshot.subscription?.cancel_at_period_end
+    ? `Cancels at period end (${new Date(snapshot.subscription.current_period_end).toLocaleDateString()}) — you keep Operator access until then.`
+    : "";
+}
+
+async function beginUpgrade(plan = "OPERATOR") {
+  try {
+    const { checkout_url } = await entitlementClient.startCheckout(accountServerUrl(), plan);
+    chrome.tabs.create({ url: checkout_url });
+  } catch (e) {
+    $("#account-note").textContent = `Couldn't start checkout: ${e.message}`;
+  }
+}
+
+$("#auth-login-btn").addEventListener("click", async () => {
+  $("#auth-error").textContent = "";
+  try {
+    await authClient.login(accountServerUrl(), $("#auth-email").value.trim(), $("#auth-password").value);
+    $("#auth-password").value = "";
+    await refreshAccountUI();
+  } catch (e) {
+    $("#auth-error").textContent = e.message || "Sign in failed.";
+  }
+});
+
+$("#auth-signup-btn").addEventListener("click", async () => {
+  $("#auth-error").textContent = "";
+  try {
+    await authClient.signup(accountServerUrl(), $("#auth-email").value.trim(), $("#auth-password").value);
+    $("#auth-password").value = "";
+    await refreshAccountUI();
+  } catch (e) {
+    $("#auth-error").textContent = e.message || "Could not create account.";
+  }
+});
+
+$("#account-signout-btn").addEventListener("click", async () => {
+  await authClient.logout(accountServerUrl());
+  await refreshAccountUI();
+});
+
+$("#account-upgrade-btn").addEventListener("click", () => beginUpgrade("OPERATOR"));
+
+$("#account-cancel-btn").addEventListener("click", async () => {
+  if (!confirm("Cancel your Operator subscription? You'll keep access until the end of the current billing period.")) return;
+  try {
+    await entitlementClient.cancelSubscription(accountServerUrl());
+    await refreshAccountUI();
+  } catch (e) {
+    $("#account-note").textContent = `Couldn't cancel: ${e.message}`;
+  }
+});
+
+$("#plan-badge").addEventListener("click", () => switchToTab("account"));
+
+// ---- Operator Mode upgrade modal --------------------------------------
+function showUpgradeModal(detail) {
+  const feature = detail?.feature || detail?.operation;
+  const attempted = $("#upgrade-modal-attempted");
+  const usageBox = $("#upgrade-modal-usage");
+  if (detail?.error === "usage_limit_reached") {
+    $("#upgrade-modal-title").textContent = "Daily limit reached";
+    attempted.textContent = `You've used your Explorer allowance for ${(detail.operation || "this action").replace(/_/g, " ")}.`;
+    usageBox.hidden = false;
+    usageBox.textContent = `${detail.used} / ${detail.limit} used this ${detail.period}. Operator Mode raises this to a much higher monthly allowance.`;
+  } else {
+    $("#upgrade-modal-title").textContent = "Unlock Operator Mode";
+    attempted.textContent = feature
+      ? `${FEATURE_LABELS[feature] || feature.replace(/_/g, " ")} requires Operator Mode.`
+      : "This requires Operator Mode.";
+    usageBox.hidden = true;
+  }
+  $("#upgrade-modal").hidden = false;
+}
+function hideUpgradeModal() { $("#upgrade-modal").hidden = true; }
+
+$("#upgrade-modal-close").addEventListener("click", hideUpgradeModal);
+$("#upgrade-modal-dismiss").addEventListener("click", hideUpgradeModal);
+$("#upgrade-modal").addEventListener("click", (e) => { if (e.target.id === "upgrade-modal") hideUpgradeModal(); });
+$("#upgrade-modal-cta").addEventListener("click", async () => {
+  hideUpgradeModal();
+  switchToTab("account");
+  if (await authClient.isLoggedIn()) {
+    beginUpgrade("OPERATOR");
+  } else {
+    $("#auth-error").textContent = "Sign in (or create a free account) first, then upgrade.";
+  }
+});
+
+window.addEventListener("focus", () => {
+  if (document.querySelector(".tab.is-active")?.dataset.tab === "account") refreshAccountUI();
+});
+
+refreshAccountUI();
 loadSettings();

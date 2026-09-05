@@ -112,7 +112,7 @@ test("background.js blocks the /agent/step call when redactionVerified is false"
   const { readFileSync } = await import("node:fs");
   const src = readFileSync(new URL("../client/background.js", import.meta.url), "utf8");
   const guardIdx = src.indexOf("vis.redactionVerified === false");
-  const requestStepIdx = src.indexOf("requestStep(cfg.serverUrl, payload)");
+  const requestStepIdx = src.indexOf("requestStep(cfg.serverUrl, payload");
   assert.ok(guardIdx > -1, "no redactionVerified guard in background.js");
   assert.ok(requestStepIdx > -1);
   assert.ok(guardIdx < requestStepIdx, "the guard must come before the network call");

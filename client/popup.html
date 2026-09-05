@@ -17,6 +17,7 @@
       </div>
       <h1>CONNOR</h1>
     </div>
+    <button class="plan-badge" id="plan-badge" type="button" title="Account &amp; plan">EXPLORER</button>
     <span class="ai-status" id="ai-status" title="Model status">AI: checking…</span>
     <span class="status-dot" id="status-dot" title="Ready"></span>
   </header>
@@ -25,6 +26,7 @@
     <button class="tab is-active" data-tab="assist">Assist</button>
     <button class="tab" data-tab="profile">Profile</button>
     <button class="tab" data-tab="activity">Activity</button>
+    <button class="tab" data-tab="account">Account</button>
   </nav>
 
   <!-- ASSIST ------------------------------------------------------------ -->
@@ -180,8 +182,65 @@
     <ol class="log" id="log"><li class="empty">Idle.</li></ol>
   </section>
 
+  <!-- ACCOUNT ---------------------------------------------------------- -->
+  <section class="panel" id="tab-account">
+    <div id="account-signed-out">
+      <p class="hint">Perception and basic form-filling work without an account. Sign in to sync your plan, usage limits, and (on Operator) workflow history across sessions.</p>
+      <label class="field"><span>Email</span><input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" /></label>
+      <label class="field"><span>Password</span><input id="auth-password" type="password" autocomplete="current-password" placeholder="••••••••" /></label>
+      <div class="account-actions">
+        <button class="scan-button" id="auth-login-btn" type="button">Sign in</button>
+        <button class="ghost-button" id="auth-signup-btn" type="button">Create account</button>
+      </div>
+      <p class="saved-note" id="auth-error" aria-live="polite"></p>
+    </div>
+
+    <div id="account-signed-in" hidden>
+      <div class="plan-card">
+        <div class="plan-card-top">
+          <span class="plan-name" id="account-plan-name">EXPLORER</span>
+          <span class="plan-tagline" id="account-plan-tagline">Experience browser perception.</span>
+        </div>
+        <div class="usage-row" id="account-usage-row" hidden>
+          <div class="usage-track"><div class="usage-fill" id="account-usage-fill"></div></div>
+          <span class="usage-label" id="account-usage-label">0 / 15 analyses today</span>
+        </div>
+      </div>
+
+      <div class="feature-grid" id="account-feature-grid"></div>
+
+      <button class="scan-button" id="account-upgrade-btn" type="button" hidden>Upgrade to Operator Mode</button>
+      <button class="ghost-button" id="account-cancel-btn" type="button" hidden>Cancel subscription</button>
+      <button class="ghost-button" id="account-signout-btn" type="button">Sign out</button>
+      <p class="saved-note" id="account-note" aria-live="polite"></p>
+    </div>
+  </section>
+
   <p class="privacy-note">All sensitive items are censored with solid black boxes. Censored fields are never filled by the agent.</p>
 </main>
-<script src="popup.js"></script>
+
+<!-- OPERATOR MODE upgrade modal — shown when a premium feature/limit is hit -->
+<div class="modal-overlay" id="upgrade-modal" hidden>
+  <div class="modal-card">
+    <button class="modal-close" id="upgrade-modal-close" type="button" aria-label="Close">✕</button>
+    <p class="modal-kicker">OPERATOR MODE</p>
+    <h2 class="modal-title" id="upgrade-modal-title">Unlock Operator Mode</h2>
+    <p class="modal-attempted" id="upgrade-modal-attempted"></p>
+    <p class="modal-body">Unlock persistent visual reasoning, advanced workflows, security analysis and higher usage limits.</p>
+    <div class="modal-usage" id="upgrade-modal-usage" hidden></div>
+    <ul class="modal-benefits">
+      <li>Higher / monthly usage limits instead of a daily cap</li>
+      <li>Advanced visual grounding &amp; multi-step persistent agent sessions</li>
+      <li>Workflow history across sessions</li>
+      <li>Advanced security &amp; DPDP compliance analysis + exportable reports</li>
+    </ul>
+    <div class="modal-actions">
+      <button class="scan-button" id="upgrade-modal-cta" type="button">Upgrade — Operator Mode</button>
+      <button class="ghost-button" id="upgrade-modal-dismiss" type="button">Continue with Free</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="popup.js"></script>
 </body>
 </html>

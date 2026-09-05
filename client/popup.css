@@ -126,3 +126,89 @@ hr { border: none; border-top: 1px solid var(--line); margin: 14px 0 10px; }
 .egress summary { font: 10px 'DM Mono', monospace; color: var(--muted); cursor: pointer; margin-top: 6px; }
 
 .privacy-note { margin-top: 12px; font-size: 9px; line-height: 1.5; color: var(--muted); text-align: center; }
+
+/* ===========================================================================
+   OPERATOR MODE — account / entitlements / upgrade surfaces.
+   Deliberately darker & more technical than the rest of the popup: this is
+   the one part of the UI whose job is to signal "this is the serious tier,"
+   not blend into the editorial paper theme used for perception/agent work.
+   =========================================================================== */
+:root {
+  --op-bg: #0b0d0f;
+  --op-panel: #12151a;
+  --op-line: #262b31;
+  --op-text: #e7eaee;
+  --op-muted: #8993a1;
+  --op-accent: #7dd3fc;
+  --op-good: #86efac;
+  --op-warn: #fca5a5;
+}
+
+.plan-badge {
+  margin-left: auto;
+  padding: 3px 8px;
+  border: 1px solid var(--line);
+  background: var(--cream);
+  font: 700 9px 'DM Mono', monospace;
+  letter-spacing: .06em;
+  color: var(--muted);
+  cursor: pointer;
+}
+.plan-badge.plan-operator { border-color: var(--op-accent); color: #0369a1; background: #e0f6ff; }
+.plan-badge.plan-command { border-color: #a78bfa; color: #5b21b6; background: #f1e9ff; }
+.ai-status { margin-left: 8px; }
+
+#tab-account { color: var(--op-text); }
+#tab-account .field > span { color: var(--op-muted); }
+#tab-account .field input { background: var(--op-panel); border-color: var(--op-line); color: var(--op-text); }
+#tab-account .hint { color: var(--op-muted); }
+.account-actions { display: flex; gap: 8px; }
+.account-actions .scan-button, .account-actions .ghost-button { margin-top: 4px; }
+#auth-error:not(:empty) { color: var(--op-warn); font: 500 10px 'DM Mono', monospace; margin-top: 6px; }
+
+.plan-card { border: 1px solid var(--op-line); background: var(--op-panel); padding: 12px 14px; margin-bottom: 12px; }
+.plan-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.plan-name { font: 700 13px 'DM Mono', monospace; letter-spacing: .08em; color: var(--op-accent); }
+.plan-tagline { font-size: 10.5px; color: var(--op-muted); text-align: right; }
+.usage-row { margin-top: 10px; }
+.usage-track { height: 5px; background: #1e232a; border-radius: 3px; overflow: hidden; }
+.usage-fill { height: 100%; background: var(--op-accent); width: 0%; transition: width .2s ease; }
+.usage-fill.is-near-limit { background: var(--op-warn); }
+.usage-label { display: block; margin-top: 5px; font: 10px 'DM Mono', monospace; color: var(--op-muted); }
+
+.feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin-bottom: 12px; }
+.feature-row { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--op-muted); }
+.feature-row .feature-dot { width: 6px; height: 6px; border-radius: 50%; background: #3a4048; flex: none; }
+.feature-row.is-on { color: var(--op-text); }
+.feature-row.is-on .feature-dot { background: var(--op-good); }
+
+#tab-account .scan-button { background: var(--op-accent); border-color: var(--op-accent); color: #06171f; }
+#tab-account .scan-button:hover { background: #5fc4f5; }
+#tab-account .ghost-button { background: var(--op-panel); border-color: var(--op-line); color: var(--op-text); }
+#tab-account .ghost-button:hover { border-color: var(--op-accent); }
+#account-note:not(:empty) { color: var(--op-muted); font: 10px 'DM Mono', monospace; margin-top: 8px; }
+
+/* ---- Upgrade modal ---- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(4, 6, 8, .72);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
+}
+.modal-card {
+  position: relative; width: 100%; max-width: 340px;
+  background: var(--op-panel); border: 1px solid var(--op-line);
+  padding: 20px; color: var(--op-text);
+}
+.modal-close {
+  position: absolute; top: 10px; right: 10px; width: 22px; height: 22px;
+  border: none; background: none; color: var(--op-muted); cursor: pointer; font-size: 12px;
+}
+.modal-close:hover { color: var(--op-text); }
+.modal-kicker { margin: 0 0 4px; font: 700 9.5px 'DM Mono', monospace; letter-spacing: .12em; color: var(--op-accent); }
+.modal-title { margin: 0 0 8px; font: 700 17px 'Space Grotesk', sans-serif; }
+.modal-attempted { margin: 0 0 10px; font-size: 11px; color: var(--op-warn); line-height: 1.5; }
+.modal-body { margin: 0 0 10px; font-size: 11.5px; color: var(--op-muted); line-height: 1.55; }
+.modal-usage { margin: 0 0 10px; padding: 8px 10px; border: 1px solid var(--op-line); background: #171b21; font: 10.5px 'DM Mono', monospace; color: var(--op-text); }
+.modal-benefits { margin: 0 0 14px; padding-left: 16px; font-size: 10.5px; color: var(--op-muted); line-height: 1.7; }
+.modal-actions .scan-button { background: var(--op-accent); border-color: var(--op-accent); color: #06171f; }
+.modal-actions .scan-button:hover { background: #5fc4f5; }
+.modal-actions .ghost-button { background: transparent; border-color: var(--op-line); color: var(--op-muted); }

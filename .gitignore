@@ -12,6 +12,11 @@ __pycache__/
 venv/
 server/.env
 
+# Local dev database (dev-only auto-created; real deployments use DATABASE_URL + Alembic)
+server/*.db
+server/*.db-wal
+server/*.db-shm
+
 # Vendored ML libraries (fetch with: npm run fetch:vendor)
 client/vendor/*
 !client/vendor/README.md

@@ -55,8 +55,16 @@ def test_endpoint_returns_503_on_failure(monkeypatch):
     from fastapi.testclient import TestClient
     import main
 
+    sys.path.insert(0, str((ROOT / "tests" / "server")))
+    import helpers  # noqa: E402  (tests/server/helpers.py — shared auth test helper)
+
     client = TestClient(main.app, raise_server_exceptions=False)
-    r = client.post("/agent/step", json=_req().model_dump())
+    tokens = helpers.signup(client)
+    r = client.post(
+        "/agent/step",
+        json=_req().model_dump(),
+        headers=helpers.auth_headers(tokens["access_token"]),
+    )
     assert r.status_code == 503
     assert "unavailable" in r.text.lower()
 
