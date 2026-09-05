@@ -73,9 +73,24 @@ python -m uvicorn main:app --app-dir server --port 8000
 
 ### 2. Load the Browser Extension
 
-1. Open Chrome and navigate to `chrome://extensions/`.
-2. Enable **Developer mode** in the top-right corner.
-3. Click **Load unpacked** and select the `client/` folder in this repository.
+CONNOR supports both Google Chrome and Mozilla Firefox Manifest V3. Because Chrome requires service workers (`background.service_worker`) while Firefox requires event scripts (`background.scripts`), switch to the appropriate manifest before loading:
+
+#### 🌐 For Google Chrome:
+1. Build the Chrome manifest:
+   ```bash
+   npm run manifest:chrome
+   ```
+2. Open Chrome and navigate to `chrome://extensions/`.
+3. Enable **Developer mode** in the top-right corner.
+4. Click **Load unpacked** and select the `client/` folder in this repository.
+
+#### 🦊 For Mozilla Firefox:
+1. Build the Firefox manifest:
+   ```bash
+   npm run manifest:firefox
+   ```
+2. Open Firefox and navigate to `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on...** and select `client/manifest.json`.
 
 ---
 
