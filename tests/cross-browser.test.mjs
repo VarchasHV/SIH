@@ -42,7 +42,7 @@ test("Firefox manifest - Gecko MV3 with background scripts", async () => {
 
   // Firefox Gecko requirements
   assert.ok(manifest.browser_specific_settings?.gecko?.id, "Firefox Gecko ID must be defined");
-  assert.equal(manifest.browser_specific_settings.gecko.id, "privacy-lens@sih2026.org");
+  assert.equal(manifest.browser_specific_settings.gecko.id, "connor@sih2026.org");
   assert.ok(
     manifest.browser_specific_settings.gecko.strict_min_version,
     "Firefox strict_min_version must be defined"
