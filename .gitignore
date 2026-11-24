@@ -18,6 +18,9 @@ client/vendor/*
 
 # Eval output
 eval/out/
+eval/security/*.results.*
+BENCHMARK_REPORT.md
+.pytest_cache/
 
 # Large generated benchmark corpora (regenerate: npm run bench:large)
 eval/bench/corpus-*.jsonl
